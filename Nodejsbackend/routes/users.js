@@ -2,25 +2,36 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db'); // your PostgreSQL pool
 const bcrypt = require('bcrypt');
+const admin = require("../firebase"); // Firebase Admin SDK
 
 // Signup Route
 router.post('/signup', async (req, res) => {
-  const { fullName, email, phone, password } = req.body;
+  const { fullName, email, phone, password, idToken } = req.body;
 
   try {
+    // 1️⃣ Verify OTP before signup
+    const decoded = await admin.auth().verifyIdToken(idToken);
+
+    if (decoded.phone_number !== `+91${phone}`) {
+      return res.status(400).json({ error: 'Phone number mismatch or OTP invalid' });
+    }
+
+    // 2️⃣ Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // 3️⃣ Create user in DB
     const newUser = await pool.query(
       'INSERT INTO users (full_name, email, phone, password) VALUES ($1, $2, $3, $4) RETURNING *',
       [fullName, email, phone, hashedPassword]
     );
 
-    res.status(201).json({ message: 'User created', user: newUser.rows[0] });
+    res.status(201).json({ message: 'User created after OTP verification', user: newUser.rows[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create user' });
   }
 });
+
 router.get('/all', async (req, res) => {
   try {
     const users = await pool.query('SELECT id, full_name, email, phone FROM users');
@@ -188,6 +199,51 @@ router.get('/loginaddress', async (req, res) => {
   res.json(result.rows);
 });
 
+// ----------------- OTP Routes -----------------
+
+// 1️⃣ Send OTP (handled by Firebase client SDK)
+// Here we just acknowledge request or track OTP attempt if needed
+router.post('/send-otp', async (req, res) => {
+  const { phone } = req.body;
+  if (!phone) return res.status(400).json({ error: 'Phone number required' });
+
+  try {
+    // You can log OTP requests or store temporarily if needed
+    await pool.query(
+      'INSERT INTO otp_requests (phone, created_at) VALUES ($1, NOW()) ON CONFLICT (phone) DO UPDATE SET created_at = NOW()',
+      [phone]
+    );
+
+    res.status(200).json({ message: `OTP sent to +91 ${phone}` });
+  } catch (err) {
+    console.error('Error sending OTP:', err);
+    res.status(500).json({ error: 'Failed to send OTP' });
+  }
+});
+
+// 2️⃣ Verify OTP (Firebase ID Token from frontend)
+router.post('/verify-otp', async (req, res) => {
+  const { idToken, phone } = req.body;
+
+  if (!idToken || !phone)
+    return res.status(400).json({ error: 'Firebase ID token and phone required' });
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+
+    if (decoded.phone_number !== `+91${phone}`) {
+      return res.status(400).json({ error: 'Phone number mismatch' });
+    }
+
+    // OTP verified successfully
+    res.status(200).json({ message: 'OTP verified successfully', verified: true });
+  } catch (error) {
+    console.error('OTP Verification Error:', error);
+    res.status(500).json({ error: 'Invalid or expired OTP' });
+  }
+});
+
+// ------------------------------------------------
 
 
 module.exports = router;
