@@ -190,51 +190,6 @@ router.get('/loginaddress', async (req, res) => {
   res.json(result.rows);
 });
 
-// ----------------- OTP Routes -----------------
-
-// 1️⃣ Send OTP (handled by Firebase client SDK)
-// Here we just acknowledge request or track OTP attempt if needed
-router.post('/send-otp', async (req, res) => {
-  const { phone } = req.body;
-  if (!phone) return res.status(400).json({ error: 'Phone number required' });
-
-  try {
-    // You can log OTP requests or store temporarily if needed
-    await pool.query(
-      'INSERT INTO otp_requests (phone, created_at) VALUES ($1, NOW()) ON CONFLICT (phone) DO UPDATE SET created_at = NOW()',
-      [phone]
-    );
-
-    res.status(200).json({ message: `OTP sent to +91 ${phone}` });
-  } catch (err) {
-    console.error('Error sending OTP:', err);
-    res.status(500).json({ error: 'Failed to send OTP' });
-  }
-});
-
-// 2️⃣ Verify OTP (Firebase ID Token from frontend)
-router.post('/verify-otp', async (req, res) => {
-  const { idToken, phone } = req.body;
-
-  if (!idToken || !phone)
-    return res.status(400).json({ error: 'Firebase ID token and phone required' });
-
-  try {
-    const decoded = await admin.auth().verifyIdToken(idToken);
-
-    if (decoded.phone_number !== `+91${phone}`) {
-      return res.status(400).json({ error: 'Phone number mismatch' });
-    }
-
-    // OTP verified successfully
-    res.status(200).json({ message: 'OTP verified successfully', verified: true });
-  } catch (error) {
-    console.error('OTP Verification Error:', error);
-    res.status(500).json({ error: 'Invalid or expired OTP' });
-  }
-});
-
-// ------------------------------------------------
 
 
 module.exports = router;
