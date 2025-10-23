@@ -4,6 +4,8 @@ const twilio = require("twilio");
 require("dotenv").config();
 
 const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+console.log(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+
 const OTP_EXPIRY = 5 * 60 * 1000; // 5 minutes
 
 // Temporary in-memory OTP store (auto clears on server restart)
