@@ -23,7 +23,7 @@ router.post("/send-otp", async (req, res) => {
   try {
     await client.messages.create({
       body: `Your verification code is ${otp}`,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: process.env.TWILIO_MSG_SERVICE_SID,
       to: `+91${phone}`,
     });
 
