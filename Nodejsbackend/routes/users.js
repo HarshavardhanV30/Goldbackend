@@ -6,26 +6,17 @@ const admin = require("../firebase"); // Firebase Admin SDK
 
 // Signup Route
 router.post('/signup', async (req, res) => {
-  const { fullName, email, phone, password, idToken } = req.body;
+  const { fullName, email, phone, password } = req.body;
 
   try {
-    // 1️⃣ Verify OTP before signup
-    const decoded = await admin.auth().verifyIdToken(idToken);
-
-    if (decoded.phone_number !== `+91${phone}`) {
-      return res.status(400).json({ error: 'Phone number mismatch or OTP invalid' });
-    }
-
-    // 2️⃣ Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 3️⃣ Create user in DB
     const newUser = await pool.query(
       'INSERT INTO users (full_name, email, phone, password) VALUES ($1, $2, $3, $4) RETURNING *',
       [fullName, email, phone, hashedPassword]
     );
 
-    res.status(201).json({ message: 'User created after OTP verification', user: newUser.rows[0] });
+    res.status(201).json({ message: 'User created', user: newUser.rows[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create user' });
