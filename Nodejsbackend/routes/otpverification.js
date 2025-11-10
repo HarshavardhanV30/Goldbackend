@@ -21,11 +21,12 @@ router.post("/send-otp", async (req, res) => {
   const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit OTP
 
   try {
-    await client.messages.create({
-      body: `Your verification code is ${otp}`,
-      messagingServiceSid: process.env.TWILIO_MSG_SERVICE_SID, // ✅ correct key
-      to: `+91${phone}`,
-    });
+   await client.messages.create({
+  messagingServiceSid: process.env.TWILIO_MSG_SERVICE_SID,
+  body: `[GBUYERS] Your OTP is ${otp}. It expires in 5 minutes.`,
+  to: `+91${phone}`,
+});
+
 
     otpStore.set(phone, { otp, expiresAt: Date.now() + OTP_EXPIRY });
     lastSendTime.set(phone, Date.now());
