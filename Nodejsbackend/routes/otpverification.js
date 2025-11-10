@@ -21,11 +21,14 @@ router.post("/send-otp", async (req, res) => {
   const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit OTP
 
   try {
-   await client.messages.create({
+await client.messages.create({
   messagingServiceSid: process.env.TWILIO_MSG_SERVICE_SID,
-  body: `Your[GBUYERS] OTP is ${otp}. It will expire in 5 minutes. Please do not share this code with anyone for security reasons.`,
-to: `+91${phone}`,
+  body: ` Your GBUYERS OTP is ${otp}. It will expire in 5 minutes. 
+Please do not share this code with anyone for security reasons. 
+Thank you for using GBUYERS! 🛍️`,
+  to: `+91${phone}`,
 });
+
 
 
     otpStore.set(phone, { otp, expiresAt: Date.now() + OTP_EXPIRY });
