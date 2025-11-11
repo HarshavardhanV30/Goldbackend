@@ -23,9 +23,9 @@ router.post("/send-otp", async (req, res) => {
   try {
 await client.messages.create({
   messagingServiceSid: process.env.TWILIO_MSG_SERVICE_SID,
-  body: ` Your GBUYERS OTP is ${otp}. It will expire in 5 minutes. 
+  body: ` Your G Buyer  OTP is ${otp}. It will expire in 5 minutes. 
 Please do not share this code with anyone for security reasons. 
-Thank you for using GBUYERS! 🛍️`,
+Thank you for using G Buyer ! 🛍️`,
   to: `+91${phone}`,
 });
 
