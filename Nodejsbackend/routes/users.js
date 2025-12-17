@@ -72,12 +72,12 @@ router.post('/login', async (req, res) => {
   }
 });
 
-router.post('/forgot-password', async (req, res) => {
-  const { userId, email, newPassword, confirmPassword } = req.body;
+router.put('/forgot-password', async (req, res) => {
+  const { email, newPassword, confirmPassword } = req.body;
 
   try {
     // 1. Validate input
-    if (!userId || !email || !newPassword || !confirmPassword) {
+    if (!email || !newPassword || !confirmPassword) {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
@@ -85,31 +85,35 @@ router.post('/forgot-password', async (req, res) => {
       return res.status(400).json({ error: 'Passwords do not match' });
     }
 
-    // 2. Check if user exists by both ID and email
+    // 2. Check if user exists
     const user = await pool.query(
-      'SELECT * FROM users WHERE id = $1 AND email = $2',
-      [userId, email]
+      'SELECT id FROM users WHERE email = $1',
+      [email]
     );
 
     if (user.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found with provided ID and email' });
+      return res.status(404).json({ error: 'User not found with this email' });
     }
 
-    // 3. Hash the new password
+    // 3. Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // 4. Update password in the database
+    // 4. Update password
     await pool.query(
-      'UPDATE users SET password = $1 WHERE id = $2 AND email = $3',
-      [hashedPassword, userId, email]
+      'UPDATE users SET password = $1 WHERE email = $2',
+      [hashedPassword, email]
     );
 
-    res.status(200).json({ message: 'Password updated successfully' });
+    res.status(200).json({
+      success: true,
+      message: 'Password updated successfully'
+    });
   } catch (err) {
     console.error('Error in forgot-password:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 // Update user route
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
