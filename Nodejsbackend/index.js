@@ -11,6 +11,7 @@ const ordersRoutes = require("./routes/orders"); //  import your user route
 const goldloanRoutes = require("./routes/goldloan"); //  import your user route
 const CancelorderRoutes = require("./routes/cancelorder"); //  import your user route
 const bannerRoutes = require("./routes/banners");
+const numberadding=require("./routes/AddNumber")
 const otpverification = require("./routes/otpverification"); //  import your user route
 
 app.use(cors());
@@ -24,6 +25,7 @@ app.use("/loan", goldloanRoutes);
 app.use("/cancelorder", CancelorderRoutes); 
 app.use("/otpverify",otpverification); 
 app.use("/banners", bannerRoutes);
+app.use("/numbers",numberadding)
 const PORT = process.env.PORT || 5432;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
