@@ -3,13 +3,13 @@ const router = express.Router();
 const pool = require('../db'); // Your PostgreSQL connection pool
 
 // ---------------------------------------------------------
-// POST: Add Email and Phone Number
-// Endpoint: POST http://localhost:5432/users/addnumber
+// 1. POST: Add Email and Phone Number
+// Endpoint: POST https://goldbackend-auyv.onrender.com/numbers/addnumber
 // ---------------------------------------------------------
 router.post("/addnumber", async (req, res) => {
   const { email, phone_number } = req.body;
 
-  // 1. Validation
+  // Validation
   if (!email || !phone_number) {
     return res.status(400).json({
       success: false,
@@ -18,9 +18,9 @@ router.post("/addnumber", async (req, res) => {
   }
 
   try {
-    // 2. Insert into PostgreSQL table
+    // Inserts directly into your 'addphonenumber' table matching your verified schema
     const query = `
-      INSERT INTO user_contacts (email, phone_number) 
+      INSERT INTO addphonenumber (email, phone_number) 
       VALUES ($1, $2) 
       RETURNING id, email, phone_number, created_at;
     `;
@@ -34,7 +34,7 @@ router.post("/addnumber", async (req, res) => {
     });
 
   } catch (error) {
-    // Check for unique constraint violation (error code 23505 in PostgreSQL)
+    // Handles duplicate email constraint ('uk_addphone_email') gracefully
     if (error.code === '23505') {
       return res.status(409).json({
         success: false,
@@ -42,21 +42,22 @@ router.post("/addnumber", async (req, res) => {
       });
     }
 
-    console.error("Error in /addnumber:", error);
+    console.error("POST /addnumber Error Details:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Internal server error."
+      message: "Internal server error.",
+      error: error.message
     });
   }
 });
 
 // ---------------------------------------------------------
-// GET: Fetch All Numbers and Emails
-// Endpoint: GET http://localhost:5432/users/numberall
+// 2. GET: Fetch All Numbers and Emails
+// Endpoint: GET https://goldbackend-auyv.onrender.com/numbers/numberall
 // ---------------------------------------------------------
 router.get("/numberall", async (req, res) => {
   try {
-    const query = "SELECT id, email, phone_number, created_at FROM user_contacts ORDER BY id DESC;";
+    const query = "SELECT id, email, phone_number, created_at FROM addphonenumber ORDER BY id DESC;";
     const result = await pool.query(query);
 
     return res.status(200).json({
@@ -66,17 +67,18 @@ router.get("/numberall", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Error in /numberall:", error);
+    console.error("GET /numberall Error Details:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Internal server error."
+      message: "Internal server error.",
+      error: error.message
     });
   }
 });
 
 // ---------------------------------------------------------
-// PUT: Update Number and Email by ID
-// Endpoint: PUT http://localhost:5432/users/number/1
+// 3. PUT: Update Number and Email by ID
+// Endpoint: PUT https://goldbackend-auyv.onrender.com/numbers/number/1
 // ---------------------------------------------------------
 router.put("/number/:id", async (req, res) => {
   const targetId = req.params.id;
@@ -90,7 +92,6 @@ router.put("/number/:id", async (req, res) => {
   }
 
   try {
-    // 1. Build dynamic update query based on provided fields
     let fields = [];
     let values = [];
     let queryIndex = 1;
@@ -107,12 +108,11 @@ router.put("/number/:id", async (req, res) => {
       queryIndex++;
     }
 
-    // Append ID as the last parameter
     values.push(targetId);
     const idIndex = queryIndex;
 
     const query = `
-      UPDATE user_contacts 
+      UPDATE addphonenumber 
       SET ${fields.join(", ")} 
       WHERE id = $${idIndex} 
       RETURNING id, email, phone_number, created_at;
@@ -141,23 +141,24 @@ router.put("/number/:id", async (req, res) => {
       });
     }
 
-    console.error("Error in /number updates:", error);
+    console.error("PUT /number/:id Error Details:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Internal server error."
+      message: "Internal server error.",
+      error: error.message
     });
   }
 });
 
 // ---------------------------------------------------------
-// DELETE: Delete Record by ID
-// Endpoint: DELETE http://localhost:5432/users/delete/1
+// 4. DELETE: Delete Record by ID
+// Endpoint: DELETE https://goldbackend-auyv.onrender.com/numbers/delete/1
 // ---------------------------------------------------------
 router.delete("/delete/:id", async (req, res) => {
   const targetId = req.params.id;
 
   try {
-    const query = "DELETE FROM user_contacts WHERE id = $1 RETURNING id, email, phone_number;";
+    const query = "DELETE FROM addphonenumber WHERE id = $1 RETURNING id, email, phone_number;";
     const result = await pool.query(query, [targetId]);
 
     if (result.rows.length === 0) {
@@ -174,10 +175,11 @@ router.delete("/delete/:id", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Error in /delete:", error);
+    console.error("DELETE /delete/:id Error Details:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Internal server error."
+      message: "Internal server error.",
+      error: error.message
     });
   }
 });
