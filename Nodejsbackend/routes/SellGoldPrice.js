@@ -43,13 +43,20 @@ router.post("/add", async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// GET: Fetch all sell gold price records
+// GET: Fetch all sell gold price records (FIXED)
 // ---------------------------------------------------------
 router.get("/all", async (req, res) => {
   try {
     // Fetches all records, newest entries first
     const query = "SELECT id, karat, price, date, created_at FROM sell_gold_prices ORDER BY id DESC;";
     const result = await pool.query(query);
+
+    // FIX: Send the retrieved records back to the client
+    return res.status(200).json({
+      success: true,
+      message: "Records fetched successfully",
+      data: result.rows
+    });
 
   } catch (error) {
     console.error("GET /all Error Details:", error.message);
