@@ -14,6 +14,7 @@ const bannerRoutes = require("./routes/banners");
 const numberadding=require("./routes/AddNumber")
 const otpverification = require("./routes/otpverification"); //  import your user route
 const GoldPrice=require("./routes/Goldprices");
+const SellPrice=require("./routes/SellGoldPrice");
 app.use(cors());
 app.use(express.json());
 app.use("/uploads", express.static("uploads")); // serve images
@@ -27,6 +28,7 @@ app.use("/otpverify",otpverification);
 app.use("/banners", bannerRoutes);
 app.use("/numbers",numberadding);
 app.use("/Goldprices",GoldPrice);
+app.use("/sellprice",SellPrice);
 const PORT = process.env.PORT || 5432;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
