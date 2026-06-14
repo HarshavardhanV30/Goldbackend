@@ -1,7 +1,8 @@
 const express = require("express");
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const cloudinary = require("../cloudinary");const pool = require("../db");
+const cloudinary = require("../cloudinary");
+const pool = require("../db");
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// Add seller gold with multiple images
+// 1. ADD SELLER GOLD (Defaults status to 'pending')
 router.post("/add", upload.array("images", 10), async (req, res) => { 
   const {
     name,
@@ -28,7 +29,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
     description,
     full_name,
     mobilenumber,
-    typeofselling   // ✅ new field
+    typeofselling   
   } = req.body;
 
   const files = req.files || [];
@@ -36,16 +37,17 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
   try {
     const imagePaths = files.map((file) => file.path);
 
+    // Added 'status' into the columns and set its value explicitly to 'pending'
     const result = await pool.query(
       `INSERT INTO sellergold 
-        (name, category, weight, purity, condition, price, description, images, full_name, mobilenumber, typeofselling)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        (name, category, weight, purity, condition, price, description, images, full_name, mobilenumber, typeofselling, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
-      [name, category, weight, purity, condition, price, description, imagePaths, full_name, mobilenumber, typeofselling]
+      [name, category, weight, purity, condition, price, description, imagePaths, full_name, mobilenumber, typeofselling, 'pending']
     );
 
     res.status(201).json({
-      message: "Seller gold product added successfully",
+      message: "Seller gold product added successfully and is awaiting approval",
       data: result.rows[0]
     });
   } catch (err) {
@@ -54,7 +56,38 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
   }
 });
 
+// 2. UPDATE PRODUCT STATUS (Admin Route to approve/reject listings)
+router.patch("/:id/status", async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // Expecting 'approved' or 'rejected'
 
+  // Validation check
+  const allowedStatuses = ["pending", "approved", "rejected"];
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ error: "Invalid status condition. Use 'approved' or 'rejected'." });
+  }
+
+  try {
+    const result = await pool.query(
+      "UPDATE sellergold SET status = $1 WHERE id = $2 RETURNING *",
+      [status, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Seller gold product not found" });
+    }
+
+    res.status(200).json({
+      message: `Product status updated to '${status}' successfully`,
+      data: result.rows[0]
+    });
+  } catch (err) {
+    console.error("Error updating seller gold status:", err.message);
+    res.status(500).json({ error: "Failed to update product status" });
+  }
+});
+
+// 3. GET ALL SELLER GOLD PRODUCTS
 router.get("/all", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM sellergold ORDER BY id DESC");
@@ -64,7 +97,8 @@ router.get("/all", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch seller gold products" });
   }
 });
-// Get seller gold product by ID
+
+// 4. GET SELLER GOLD PRODUCT BY ID
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -83,19 +117,22 @@ router.get("/:id", async (req, res) => {
     res.status(200).json(result.rows[0]);
   } catch (err) {
     console.error("Error fetching seller gold product:", err.message);
-
     res.status(500).json({
       error: "Failed to fetch seller gold product"
     });
   }
 });
+
+// 5. DELETE SELLER GOLD PRODUCT (And its Cloudinary images)
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
+  
   const getPublicIdFromUrl = (url) => {
     const parts = url.split("/");
     const filename = parts[parts.length - 1].split(".")[0];
     return `seller/${filename}`;
   };
+
   try {
     // First, get the images associated with the product
     const Result = await pool.query(
@@ -109,15 +146,14 @@ router.delete("/:id", async (req, res) => {
 
     const imagePaths = Result.rows[0].images || [];
 
-    // Delete images from the filesystem
-      await Promise.all(
-          imagePaths.map((url) => {
-            const publicId = getPublicIdFromUrl(url);
-            return cloudinary.uploader.destroy(publicId);
-          })
-        );
+    // Delete images from Cloudinary storage
+    await Promise.all(
+      imagePaths.map((url) => {
+        const publicId = getPublicIdFromUrl(url);
+        return cloudinary.uploader.destroy(publicId);
+      })
+    );
     
-
     // Delete the product from the database
     await pool.query("DELETE FROM sellergold WHERE id = $1", [id]);
 
@@ -127,6 +163,5 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to delete seller gold product" });
   }
 });
-
 
 module.exports = router;
