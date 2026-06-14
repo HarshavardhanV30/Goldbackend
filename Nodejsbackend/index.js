@@ -13,7 +13,7 @@ const CancelorderRoutes = require("./routes/cancelorder"); //  import your user 
 const bannerRoutes = require("./routes/banners");
 const numberadding=require("./routes/AddNumber")
 const otpverification = require("./routes/otpverification"); //  import your user route
-
+const GoldPrice=require("./routes/Goldprices");
 app.use(cors());
 app.use(express.json());
 app.use("/uploads", express.static("uploads")); // serve images
@@ -25,7 +25,8 @@ app.use("/loan", goldloanRoutes);
 app.use("/cancelorder", CancelorderRoutes); 
 app.use("/otpverify",otpverification); 
 app.use("/banners", bannerRoutes);
-app.use("/numbers",numberadding)
+app.use("/numbers",numberadding);
+app.use("/Goldprices",GoldPrice);
 const PORT = process.env.PORT || 5432;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
