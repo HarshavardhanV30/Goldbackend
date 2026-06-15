@@ -17,6 +17,13 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
+// Helper to extract Cloudinary public ID from URL
+const getPublicIdFromUrl = (url) => {
+  const parts = url.split("/");
+  const filename = parts[parts.length - 1].split(".")[0];
+  return `seller/${filename}`;
+};
+
 // 1. ADD SELLER GOLD (Defaults status to 'pending')
 router.post("/add", upload.array("images", 10), async (req, res) => { 
   const {
@@ -123,15 +130,91 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// 5. DELETE SELLER GOLD PRODUCT (And its Cloudinary images)
+// 5. UPDATE SELLER GOLD PRODUCT DETAILS (PUT API)
+router.put("/:id", upload.array("images", 10), async (req, res) => {
+  const { id } = req.params;
+  const {
+    name,
+    category,
+    weight,
+    purity,
+    condition,
+    price,
+    description,
+    full_name,
+    mobilenumber,
+    typeofselling,
+    status // Allows keeping or altering the status if needed
+  } = req.body;
+
+  try {
+    // 1. Fetch current product data from database
+    const currentProductResult = await pool.query(
+      "SELECT images, status FROM sellergold WHERE id = $1",
+      [id]
+    );
+
+    if (currentProductResult.rows.length === 0) {
+      return res.status(404).json({ error: "Seller gold product not found" });
+    }
+
+    const currentImages = currentProductResult.rows[0].images || [];
+    const currentStatus = currentProductResult.rows[0].status;
+
+    let finalImages = currentImages;
+
+    // 2. If new files are uploaded, delete old images and use the new ones
+    if (req.files && req.files.length > 0) {
+      await Promise.all(
+        currentImages.map((url) => {
+          const publicId = getPublicIdFromUrl(url);
+          return cloudinary.uploader.destroy(publicId);
+        })
+      );
+      finalImages = req.files.map((file) => file.path);
+    }
+
+    // 3. Fallback/Default status behavior: reset to 'pending' on edits unless specified
+    const updatedStatus = status || currentStatus;
+
+    // 4. Perform the full updates
+    const result = await pool.query(
+      `UPDATE sellergold 
+       SET name = $1, category = $2, weight = $3, purity = $4, condition = $5, 
+           price = $6, description = $7, images = $8, full_name = $9, 
+           mobilenumber = $10, typeofselling = $11, status = $12
+       WHERE id = $13
+       RETURNING *`,
+      [
+        name, 
+        category, 
+        weight, 
+        purity, 
+        condition, 
+        price, 
+        description, 
+        finalImages, 
+        full_name, 
+        mobilenumber, 
+        typeofselling, 
+        updatedStatus,
+        id
+      ]
+    );
+
+    res.status(200).json({
+      message: "Seller gold product updated successfully",
+      data: result.rows[0]
+    });
+  } catch (err) {
+    console.error("Error updating seller gold product:", err.message);
+    res.status(500).json({ error: "Failed to update seller gold product" });
+  }
+});
+
+// 6. DELETE SELLER GOLD PRODUCT (And its Cloudinary images)
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
-  
-  const getPublicIdFromUrl = (url) => {
-    const parts = url.split("/");
-    const filename = parts[parts.length - 1].split(".")[0];
-    return `seller/${filename}`;
-  };
 
   try {
     // First, get the images associated with the product
