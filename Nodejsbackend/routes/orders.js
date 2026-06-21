@@ -27,6 +27,9 @@ router.get('/list/:userId', async (req, res) => {
         status: order.status,
         address: order.address,
         totalAmount: parseFloat(order.total_amount),
+        advancePaid: parseFloat(order.advance_paid || 0),
+        balanceDue: parseFloat(order.balance_due || 0),
+        initialPaymentType: order.initial_payment_type || 'full',
         ordersummary: formattedProducts,
       });
     }
@@ -120,30 +123,37 @@ router.delete('/cartdelete/:cartId', async (req, res) => {
   }
 });
 
-// ✅ POST /checkout
+// ✅ POST /checkout (With Upfront Flexible Advance Configuration)
 router.post("/checkout", async (req, res) => {
-  const { userId, addressId, paymentMethod, expectedDelivery } = req.body;
+  // paymentType should be either 'minimum' or 'full' from the frontend UI
+  const { userId, addressId, paymentMethod, expectedDelivery, paymentType = 'full' } = req.body;
+
+  if (!userId || !addressId) {
+    return res.status(400).json({ error: "Missing required checkout parameters" });
+  }
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // Fetch address
+    // Fetch address validation
     const addressRes = await client.query(
       "SELECT * FROM addresses WHERE user_id = $1 AND id = $2",
       [userId, addressId]
     );
     if (addressRes.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(400).json({ error: "Address not found" });
     }
     const address = addressRes.rows[0];
 
-    // Fetch cart items
+    // Fetch cart items validation
     const cartRes = await client.query(
       "SELECT * FROM carts WHERE user_id = $1",
       [userId]
     );
     if (cartRes.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(400).json({ error: "No items in cart" });
     }
 
@@ -157,15 +167,36 @@ router.post("/checkout", async (req, res) => {
     }
 
     const totalAmount = subtotal;
+    
+    // Calculate the Advance Paid and Remaining Balance
+    let advancePaid = 0;
+    let balanceDue = 0;
 
-    // Insert into orders with JSONB order_summary
+    if (paymentType === 'minimum') {
+      const MINIMUM_ADVANCE = 500.00;
+      // Safety rule: if total cost is less than 500, advance paid cannot exceed the bill total
+      if (totalAmount < MINIMUM_ADVANCE) {
+        advancePaid = totalAmount;
+        balanceDue = 0;
+      } else {
+        advancePaid = MINIMUM_ADVANCE;
+        balanceDue = totalAmount - MINIMUM_ADVANCE;
+      }
+    } else {
+      // Full settlement option
+      advancePaid = totalAmount;
+      balanceDue = 0;
+    }
+
+    // Insert order data map matching database layout
     await client.query(
       `INSERT INTO orders (
          user_id, address_id, address, payment_method,
          expected_delivery, subtotal, total_amount,
-         order_summary, status, order_date
+         order_summary, status, order_date,
+         advance_paid, balance_due, initial_payment_type
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'processing', NOW())`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'processing', NOW(), $9, $10, $11)`,
       [
         userId,
         addressId,
@@ -174,15 +205,23 @@ router.post("/checkout", async (req, res) => {
         expectedDelivery,
         subtotal,
         totalAmount,
-        JSON.stringify(orderSummary)
+        JSON.stringify(orderSummary),
+        advancePaid,
+        balanceDue,
+        paymentType
       ]
     );
 
-    // Clear cart after order
+    // Clear cart after secure save
     await client.query("DELETE FROM carts WHERE user_id = $1", [userId]);
 
     await client.query("COMMIT");
-    res.status(200).json({ message: "Order placed successfully" });
+    res.status(200).json({ 
+      message: "Order placed successfully", 
+      totalAmount, 
+      advancePaid, 
+      balanceDue 
+    });
 
   } catch (error) {
     await client.query("ROLLBACK");
@@ -205,8 +244,5 @@ router.post('/update-status', async (req, res) => {
     res.status(500).json({ message: "Failed to update status" });
   }
 });
-
-
-
 
 module.exports = router;
