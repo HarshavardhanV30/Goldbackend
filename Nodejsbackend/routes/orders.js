@@ -2,22 +2,163 @@ const express = require("express");
 const pool = require("../db"); // PostgreSQL pool instance
 const router = express.Router();
 
-// ✅ GET /orders/list/:userId
+// ==========================================
+// 1. ORDERS APIS
+// ==========================================
+
+// ✅ POST /orders/checkout (Place an order with custom upfront payment & payment types)
+router.post("/checkout", async (req, res) => {
+  const { 
+    userId, 
+    addressId, 
+    paymentMethod,       // Expected values: 'upi' or 'cod'
+    expectedDelivery, 
+    advancePaidAmount,   // The custom amount entered by the user (e.g., 500, 1000)
+    paymentStatus = 'pending' // Initial status of the transaction ('pending', 'completed')
+  } = req.body;
+
+  if (!userId || !addressId || !paymentMethod) {
+    return res.status(400).json({ error: "Missing required checkout parameters" });
+  }
+
+  // Enforce valid payment methods
+  if (!['upi', 'cod'].includes(paymentMethod.toLowerCase())) {
+    return res.status(400).json({ error: "Payment method must be either 'upi' or 'cod'" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Fetch and validate address
+    const addressRes = await client.query(
+      "SELECT * FROM addresses WHERE user_id = $1 AND id = $2",
+      [userId, addressId]
+    );
+    if (addressRes.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Address not found" });
+    }
+    const address = addressRes.rows[0];
+
+    // Fetch and validate cart items
+    const cartRes = await client.query(
+      "SELECT * FROM carts WHERE user_id = $1",
+      [userId]
+    );
+    if (cartRes.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "No items in cart" });
+    }
+
+    // Calculate subtotal
+    let subtotal = 0;
+    const orderSummary = [];
+    for (const item of cartRes.rows) {
+      const itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
+      subtotal += itemTotal;
+      orderSummary.push(item);
+    }
+
+    const totalAmount = subtotal;
+    
+    // Parse the user-entered custom payment amount
+    let proposedAdvance = parseFloat(advancePaidAmount) || 0;
+    let advancePaid = 0;
+    let balanceDue = 0;
+
+    // Safety checks for payment math
+    if (proposedAdvance >= totalAmount) {
+      advancePaid = totalAmount;
+      balanceDue = 0;
+    } else {
+      advancePaid = proposedAdvance;
+      balanceDue = totalAmount - proposedAdvance;
+    }
+
+    // Insert order data map matching database layout
+    const insertOrderQuery = `
+      INSERT INTO orders (
+        user_id, address_id, address, payment_method,
+        expected_delivery, subtotal, total_amount,
+        order_summary, status, payment_status, order_date,
+        advance_paid, balance_due
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'processing', $9, NOW(), $10, $11)
+      RETURNING id;
+    `;
+
+    const orderResult = await client.query(insertOrderQuery, [
+      userId,
+      addressId,
+      JSON.stringify(address),
+      paymentMethod.toLowerCase(),
+      expectedDelivery,
+      subtotal,
+      totalAmount,
+      JSON.stringify(orderSummary),
+      paymentStatus, // 'pending' or 'completed' depending on frontend gateway response
+      advancePaid,
+      balanceDue
+    ]);
+
+    // Clear cart after order is successfully placed
+    await client.query("DELETE FROM carts WHERE user_id = $1", [userId]);
+
+    await client.query("COMMIT");
+    
+    res.status(201).json({ 
+      message: "Order placed successfully", 
+      orderId: orderResult.rows[0].id,
+      totalAmount, 
+      advancePaid, 
+      balanceDue,
+      paymentMethod,
+      paymentStatus
+    });
+
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Checkout Error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  } finally {
+    client.release();
+  }
+});
+
+// ✅ GET /orders/all (Fetch all system orders for admin panels)
+router.get("/all", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM orders ORDER BY order_date DESC");
+    res.status(200).json(result.rows);
+  } catch (err) {
+    console.error("Fetching orders failed:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ GET /orders/list/:userId (Fetch formatted orders for a specific user profile)
 router.get('/list/:userId', async (req, res) => {
   const { userId } = req.params;
 
   try {
-    const ordersResult = await pool.query("SELECT * FROM orders WHERE user_id = $1 ", [userId]);
+    const ordersResult = await pool.query(
+      "SELECT * FROM orders WHERE user_id = $1 ORDER BY order_date DESC", 
+      [userId]
+    );
     const orders = [];
 
     for (const order of ordersResult.rows) {
       const orderSummary = order.order_summary || [];
 
-      const formattedProducts = orderSummary.map(item => ({
+      // Safe deep parsing if saved as string JSON or native array JSONB
+      const itemsArray = typeof orderSummary === 'string' ? JSON.parse(orderSummary) : orderSummary;
+
+      const formattedProducts = itemsArray.map(item => ({
         title: item.name || "Unknown Product",
         quantity: item.quantity || 1,
         purity: item.purity || null,
-        price: item.price || 0,
+        price: parseFloat(item.price) || 0,
         image: item.image || null,
       }));
 
@@ -25,11 +166,12 @@ router.get('/list/:userId', async (req, res) => {
         orderId: order.id,
         createdAt: order.order_date,
         status: order.status,
-        address: order.address,
+        paymentStatus: order.payment_status || 'pending',
+        paymentMethod: order.payment_method,
+        address: typeof order.address === 'string' ? JSON.parse(order.address) : order.address,
         totalAmount: parseFloat(order.total_amount),
         advancePaid: parseFloat(order.advance_paid || 0),
         balanceDue: parseFloat(order.balance_due || 0),
-        initialPaymentType: order.initial_payment_type || 'full',
         ordersummary: formattedProducts,
       });
     }
@@ -41,19 +183,50 @@ router.get('/list/:userId', async (req, res) => {
   }
 });
 
+// ✅ PUT /orders/update-status (Update fulfillments and payment confirmations)
+router.put('/update-status', async (req, res) => {
+  const { orderId, status, paymentStatus } = req.body;
 
-// ✅ GET /orders/all
-router.get("/all", async (req, res) => {
+  if (!orderId) {
+    return res.status(400).json({ error: "Order ID is required" });
+  }
+
   try {
-    const result = await pool.query("SELECT * FROM orders");
-    res.status(200).json(result.rows);
-  } catch (err) {
-    console.error("Fetching orders failed:", err);
-    res.status(500).json({ error: "Server error" });
+    // Dynamically build patch queries depending on what management data is sent
+    let query = "UPDATE orders SET ";
+    const params = [];
+    
+    if (status) {
+      params.push(status);
+      query += `status = $${params.length}`;
+    }
+    if (paymentStatus) {
+      if (params.length > 0) query += ", ";
+      params.push(paymentStatus);
+      query += `payment_status = $${params.length}`;
+    }
+
+    if (params.length === 0) {
+      return res.status(400).json({ message: "No data items specified for modifications" });
+    }
+
+    params.push(orderId);
+    query += ` WHERE id = $${params.length} RETURNING *`;
+
+    const result = await pool.query(query, params);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Order records not found" });
+    }
+
+    res.status(200).json({ message: "Order records modified successfully", order: result.rows[0] });
+  } catch (error) {
+    console.error("Failed to update status:", error);
+    res.status(500).json({ message: "Failed to update order criteria details" });
   }
 });
 
-// ✅ DELETE /orders/delete/:orderId
+// ✅ DELETE /orders/delete/:orderId (Remove order record)
 router.delete('/delete/:orderId', async (req, res) => {
   const { orderId } = req.params;
 
@@ -71,6 +244,10 @@ router.delete('/delete/:orderId', async (req, res) => {
   }
 });
 
+
+// ==========================================
+// 2. SHOPPING CART APIS
+// ==========================================
 
 // ✅ POST /addcart
 router.post('/addcart', async (req, res) => {
@@ -120,128 +297,6 @@ router.delete('/cartdelete/:cartId', async (req, res) => {
   } catch (error) {
     console.error("Error deleting cart item:", error);
     res.status(500).json({ message: "Internal server error" });
-  }
-});
-
-// ✅ POST /checkout (With Upfront Flexible Advance Configuration)
-router.post("/checkout", async (req, res) => {
-  // paymentType should be either 'minimum' or 'full' from the frontend UI
-  const { userId, addressId, paymentMethod, expectedDelivery, paymentType = 'full' } = req.body;
-
-  if (!userId || !addressId) {
-    return res.status(400).json({ error: "Missing required checkout parameters" });
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    // Fetch address validation
-    const addressRes = await client.query(
-      "SELECT * FROM addresses WHERE user_id = $1 AND id = $2",
-      [userId, addressId]
-    );
-    if (addressRes.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return res.status(400).json({ error: "Address not found" });
-    }
-    const address = addressRes.rows[0];
-
-    // Fetch cart items validation
-    const cartRes = await client.query(
-      "SELECT * FROM carts WHERE user_id = $1",
-      [userId]
-    );
-    if (cartRes.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return res.status(400).json({ error: "No items in cart" });
-    }
-
-    const orderSummary = [];
-    let subtotal = 0;
-
-    for (const item of cartRes.rows) {
-      const itemTotal = (item.price || 0) * (item.quantity || 1);
-      subtotal += itemTotal;
-      orderSummary.push(item);
-    }
-
-    const totalAmount = subtotal;
-    
-    // Calculate the Advance Paid and Remaining Balance
-    let advancePaid = 0;
-    let balanceDue = 0;
-
-    if (paymentType === 'minimum') {
-      const MINIMUM_ADVANCE = 500.00;
-      // Safety rule: if total cost is less than 500, advance paid cannot exceed the bill total
-      if (totalAmount < MINIMUM_ADVANCE) {
-        advancePaid = totalAmount;
-        balanceDue = 0;
-      } else {
-        advancePaid = MINIMUM_ADVANCE;
-        balanceDue = totalAmount - MINIMUM_ADVANCE;
-      }
-    } else {
-      // Full settlement option
-      advancePaid = totalAmount;
-      balanceDue = 0;
-    }
-
-    // Insert order data map matching database layout
-    await client.query(
-      `INSERT INTO orders (
-         user_id, address_id, address, payment_method,
-         expected_delivery, subtotal, total_amount,
-         order_summary, status, order_date,
-         advance_paid, balance_due, initial_payment_type
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'processing', NOW(), $9, $10, $11)`,
-      [
-        userId,
-        addressId,
-        JSON.stringify(address),
-        paymentMethod,
-        expectedDelivery,
-        subtotal,
-        totalAmount,
-        JSON.stringify(orderSummary),
-        advancePaid,
-        balanceDue,
-        paymentType
-      ]
-    );
-
-    // Clear cart after secure save
-    await client.query("DELETE FROM carts WHERE user_id = $1", [userId]);
-
-    await client.query("COMMIT");
-    res.status(200).json({ 
-      message: "Order placed successfully", 
-      totalAmount, 
-      advancePaid, 
-      balanceDue 
-    });
-
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Checkout Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  } finally {
-    client.release();
-  }
-});
-
-// ✅ POST /update-status
-router.post('/update-status', async (req, res) => {
-  const { orderId, status } = req.body;
-
-  try {
-    await pool.query("UPDATE orders SET status = $1 WHERE id = $2", [status, orderId]);
-    res.status(200).json({ message: "Status updated successfully" });
-  } catch (error) {
-    console.error("Failed to update status:", error);
-    res.status(500).json({ message: "Failed to update status" });
   }
 });
 
