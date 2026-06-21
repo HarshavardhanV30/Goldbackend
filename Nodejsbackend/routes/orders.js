@@ -76,7 +76,7 @@ router.post("/checkout", async (req, res) => {
       balanceDue = totalAmount - proposedAdvance;
     }
 
-    // Insert order data map matching database layout
+    // Fix applied here: Columns (13 total) and VALUES (13 total) now align perfectly.
     const insertOrderQuery = `
       INSERT INTO orders (
         user_id, address_id, address, payment_method,
@@ -89,17 +89,17 @@ router.post("/checkout", async (req, res) => {
     `;
 
     const orderResult = await client.query(insertOrderQuery, [
-      userId,
-      addressId,
-      JSON.stringify(address),
-      paymentMethod.toLowerCase(),
-      expectedDelivery,
-      subtotal,
-      totalAmount,
-      JSON.stringify(orderSummary),
-      paymentStatus, // 'pending' or 'completed' depending on frontend gateway response
-      advancePaid,
-      balanceDue
+      userId,                           // $1
+      addressId,                        // $2
+      JSON.stringify(address),          // $3
+      paymentMethod.toLowerCase(),      // $4
+      expectedDelivery || null,         // $5 (Handles fallback if missing)
+      subtotal,                         // $6
+      totalAmount,                      // $7
+      JSON.stringify(orderSummary),     // $8
+      paymentStatus,                    // $9
+      advancePaid,                      // $10
+      balanceDue                        // $11
     ]);
 
     // Clear cart after order is successfully placed
@@ -120,7 +120,7 @@ router.post("/checkout", async (req, res) => {
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("Checkout Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ error: "Internal Server Error", details: error.message });
   } finally {
     client.release();
   }
@@ -192,7 +192,6 @@ router.put('/update-status', async (req, res) => {
   }
 
   try {
-    // Dynamically build patch queries depending on what management data is sent
     let query = "UPDATE orders SET ";
     const params = [];
     
