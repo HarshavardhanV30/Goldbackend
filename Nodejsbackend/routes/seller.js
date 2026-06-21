@@ -36,7 +36,13 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
     description,
     full_name,
     mobilenumber,
-    typeofselling   
+    typeofselling,
+    street_no,    // Added field
+    landmark,     // Added field
+    state,        // Added field
+    district,     // Added field
+    mandal,       // Added field
+    pincode       // Added field
   } = req.body;
 
   const files = req.files || [];
@@ -44,13 +50,31 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
   try {
     const imagePaths = files.map((file) => file.path);
 
-    // Added 'status' into the columns and set its value explicitly to 'pending'
     const result = await pool.query(
       `INSERT INTO sellergold 
-        (name, category, weight, purity, condition, price, description, images, full_name, mobilenumber, typeofselling, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        (name, category, weight, purity, condition, price, description, images, full_name, mobilenumber, typeofselling, status, street_no, landmark, state, district, mandal, pincode)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        RETURNING *`,
-      [name, category, weight, purity, condition, price, description, imagePaths, full_name, mobilenumber, typeofselling, 'pending']
+      [
+        name, 
+        category, 
+        weight, 
+        purity, 
+        condition, 
+        price, 
+        description, 
+        imagePaths, 
+        full_name, 
+        mobilenumber, 
+        typeofselling, 
+        'pending',
+        street_no, 
+        landmark, 
+        state, 
+        district, 
+        mandal,
+        pincode
+      ]
     );
 
     res.status(201).json({
@@ -68,7 +92,6 @@ router.patch("/:id/status", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body; // Expecting 'approved' or 'rejected'
 
-  // Validation check
   const allowedStatuses = ["pending", "approved", "rejected"];
   if (!allowedStatuses.includes(status)) {
     return res.status(400).json({ error: "Invalid status condition. Use 'approved' or 'rejected'." });
@@ -144,11 +167,17 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
     full_name,
     mobilenumber,
     typeofselling,
-    status // Allows keeping or altering the status if needed
+    status,
+    street_no,    // Added field
+    landmark,     // Added field
+    state,        // Added field
+    district,     // Added field
+    mandal,       // Added field
+    pincode       // Added field
   } = req.body;
 
   try {
-    // 1. Fetch current product data from database
+    // Fetch current product data from database
     const currentProductResult = await pool.query(
       "SELECT images, status FROM sellergold WHERE id = $1",
       [id]
@@ -163,7 +192,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
 
     let finalImages = currentImages;
 
-    // 2. If new files are uploaded, delete old images and use the new ones
+    // If new files are uploaded, delete old images and use the new ones
     if (req.files && req.files.length > 0) {
       await Promise.all(
         currentImages.map((url) => {
@@ -174,16 +203,16 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
       finalImages = req.files.map((file) => file.path);
     }
 
-    // 3. Fallback/Default status behavior: reset to 'pending' on edits unless specified
     const updatedStatus = status || currentStatus;
 
-    // 4. Perform the full updates
+    // Perform the full updates
     const result = await pool.query(
       `UPDATE sellergold 
        SET name = $1, category = $2, weight = $3, purity = $4, condition = $5, 
            price = $6, description = $7, images = $8, full_name = $9, 
-           mobilenumber = $10, typeofselling = $11, status = $12
-       WHERE id = $13
+           mobilenumber = $10, typeofselling = $11, status = $12,
+           street_no = $13, landmark = $14, state = $15, district = $16, mandal = $17, pincode = $18
+       WHERE id = $19
        RETURNING *`,
       [
         name, 
@@ -198,6 +227,12 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
         mobilenumber, 
         typeofselling, 
         updatedStatus,
+        street_no,
+        landmark,
+        state,
+        district,
+        mandal,
+        pincode,
         id
       ]
     );
@@ -217,7 +252,6 @@ router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    // First, get the images associated with the product
     const Result = await pool.query(
       "SELECT images FROM sellergold WHERE id = $1",
       [id]
@@ -229,7 +263,6 @@ router.delete("/:id", async (req, res) => {
 
     const imagePaths = Result.rows[0].images || [];
 
-    // Delete images from Cloudinary storage
     await Promise.all(
       imagePaths.map((url) => {
         const publicId = getPublicIdFromUrl(url);
@@ -237,7 +270,6 @@ router.delete("/:id", async (req, res) => {
       })
     );
     
-    // Delete the product from the database
     await pool.query("DELETE FROM sellergold WHERE id = $1", [id]);
 
     res.status(200).json({ message: "Seller gold product deleted successfully" });
