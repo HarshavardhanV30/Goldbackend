@@ -32,6 +32,7 @@ router.get('/all', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
+
 // Delete User by ID
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
@@ -49,6 +50,7 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete user' });
   }
 });
+
 // login.js
 router.post('/login', async (req, res) => {
   const { identifier, password } = req.body; // identifier can be email or phone
@@ -157,6 +159,7 @@ router.put('/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to update user' });
   }
 });
+
 router.post('/addresses', async (req, res) => {
   const {
     userId,
@@ -188,12 +191,93 @@ router.post('/addresses', async (req, res) => {
     res.status(500).json({ message: 'Database error' });
   }
 });
+
 router.get('/loginaddress', async (req, res) => {
   const userId = req.query.userId;
   const result = await pool.query('SELECT * FROM addresses WHERE user_id = $1', [userId]);
   res.json(result.rows);
 });
 
+// ==========================================
+// NEWLY ADDED ADDRESS API ENDPOINTS
+// ==========================================
 
+// Update Address Route (Expects Address ID in URL path)
+router.put('/addresses/:id', async (req, res) => {
+  const { id } = req.params;
+  const {
+    name,
+    mobile,
+    pincode,
+    flat,
+    street,
+    cod,
+    city,
+    state,
+    landmark,
+    addressType,
+  } = req.body;
+
+  try {
+    const updateQuery = `
+      UPDATE addresses
+      SET name = COALESCE($1, name),
+          mobile = COALESCE($2, mobile),
+          pincode = COALESCE($3, pincode),
+          flat = COALESCE($4, flat),
+          street = COALESCE($5, street),
+          cod = COALESCE($6, cod),
+          city = COALESCE($7, city),
+          state = COALESCE($8, state),
+          landmark = COALESCE($9, landmark),
+          address_type = COALESCE($10, address_type)
+      WHERE id = $11
+      RETURNING *
+    `;
+
+    const values = [
+      name || null,
+      mobile || null,
+      pincode || null,
+      flat || null,
+      street || null,
+      cod !== undefined ? cod : null, // accounts for boolean values
+      city || null,
+      state || null,
+      landmark || null,
+      addressType || null,
+      id
+    ];
+
+    const result = await pool.query(updateQuery, values);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Address not found' });
+    }
+
+    res.status(200).json({ message: 'Address updated successfully', address: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error while updating address' });
+  }
+});
+
+// Delete Address Route (Expects Address ID in URL path)
+router.delete('/addresses/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM addresses WHERE id = $1 RETURNING *', [id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Address not found' });
+    }
+
+    res.status(200).json({ message: 'Address deleted successfully', address: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error while deleting address' });
+  }
+});
 
 module.exports = router;
