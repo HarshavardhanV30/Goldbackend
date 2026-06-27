@@ -65,6 +65,7 @@ router.post("/checkout", async (req, res) => {
     let advancePaid = 0;
     let balanceDue = totalAmount;
     let finalPaymentStatus = "pending";
+    let initialPaymentType = "full"; // Default is full
 
     if (paymentMethod.toLowerCase() === "upi") {
         advancePaid = Number(advancePaidAmount) || 0;
@@ -89,10 +90,30 @@ router.post("/checkout", async (req, res) => {
             finalPaymentStatus = "pending";
         }
 
+        // Calculate payment type percentage if totalAmount is greater than 0
+        if (totalAmount > 0) {
+          const paidPercentage = Math.round((advancePaid / totalAmount) * 100);
+          
+          if (paidPercentage === 10) {
+            initialPaymentType = "10%";
+          } else if (paidPercentage === 20) {
+            initialPaymentType = "20%";
+          } else if (paidPercentage === 50) {
+            initialPaymentType = "50%";
+          } else if (paidPercentage === 75) {
+            initialPaymentType = "75%";
+          } else if (paidPercentage === 100) {
+            initialPaymentType = "full";
+          } else {
+            initialPaymentType = "partial"; // Fallback identifier if custom amount is outside fixed thresholds
+          }
+        }
+
     } else if (paymentMethod.toLowerCase() === "cod") {
         advancePaid = 0;
         balanceDue = totalAmount;
         finalPaymentStatus = "pending";
+        initialPaymentType = "cod"; // or "pending" / "full" based on how you log COD defaults
     }
 
     // Insert order data map matching database layout
@@ -101,9 +122,9 @@ router.post("/checkout", async (req, res) => {
         user_id, address_id, address, payment_method,
         expected_delivery, subtotal, total_amount,
         order_summary, status, payment_status, order_date,
-        advance_paid, balance_due
+        advance_paid, balance_due, initial_payment_type
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'processing', $9, NOW(), $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'processing', $9, NOW(), $10, $11, $12)
       RETURNING id;
     `;
 
@@ -118,7 +139,8 @@ router.post("/checkout", async (req, res) => {
       JSON.stringify(orderSummary),
       finalPaymentStatus, 
       advancePaid,
-      balanceDue
+      balanceDue,
+      initialPaymentType
     ]);
 
     // Clear cart after order is successfully placed
@@ -133,7 +155,8 @@ router.post("/checkout", async (req, res) => {
       advancePaid, 
       balanceDue,
       paymentMethod,
-      paymentStatus: finalPaymentStatus
+      paymentStatus: finalPaymentStatus,
+      initialPaymentType
     });
 
   } catch (error) {
@@ -191,6 +214,7 @@ router.get('/list/:userId', async (req, res) => {
         totalAmount: parseFloat(order.total_amount),
         advancePaid: parseFloat(order.advance_paid || 0),
         balanceDue: parseFloat(order.balance_due || 0),
+        initialPaymentType: order.initial_payment_type,
         ordersummary: formattedProducts,
       });
     }
