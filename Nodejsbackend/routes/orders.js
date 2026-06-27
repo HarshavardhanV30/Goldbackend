@@ -13,8 +13,7 @@ router.post("/checkout", async (req, res) => {
     addressId, 
     paymentMethod,       // Expected values: 'upi' or 'cod'
     expectedDelivery, 
-    advancePaidAmount,   // The custom amount entered by the user (e.g., 500, 1000)
-    paymentStatus = 'pending' // Initial status of the transaction ('pending', 'completed')
+    advancePaidAmount    // The custom amount entered by the user (e.g., 500, 1000)
   } = req.body;
 
   if (!userId || !addressId || !paymentMethod) {
@@ -51,32 +50,52 @@ router.post("/checkout", async (req, res) => {
       return res.status(400).json({ error: "No items in cart" });
     }
 
-    // Calculate subtotal
+    // Calculate subtotal accurately
     let subtotal = 0;
     const orderSummary = [];
     for (const item of cartRes.rows) {
-      const itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
+      const itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 1);
       subtotal += itemTotal;
       orderSummary.push(item);
     }
 
     const totalAmount = subtotal;
     
-    // Parse the user-entered custom payment amount
-    let proposedAdvance = parseFloat(advancePaidAmount) || 0;
+    // Server-side calculation values determined entirely from business rules
     let advancePaid = 0;
-    let balanceDue = 0;
+    let balanceDue = totalAmount;
+    let finalPaymentStatus = "pending";
 
-    // Safety checks for payment math
-    if (proposedAdvance >= totalAmount) {
-      advancePaid = totalAmount;
-      balanceDue = 0;
-    } else {
-      advancePaid = proposedAdvance;
-      balanceDue = totalAmount - proposedAdvance;
+    if (paymentMethod.toLowerCase() === "upi") {
+        advancePaid = Number(advancePaidAmount) || 0;
+
+        if (advancePaid < 0) {
+            advancePaid = 0;
+        }
+
+        if (advancePaid > totalAmount) {
+            advancePaid = totalAmount;
+        }
+
+        balanceDue = parseFloat(
+            (totalAmount - advancePaid).toFixed(2)
+        );
+
+        if (balanceDue === 0) {
+            finalPaymentStatus = "completed";
+        } else if (advancePaid > 0) {
+            finalPaymentStatus = "partial_paid";
+        } else {
+            finalPaymentStatus = "pending";
+        }
+
+    } else if (paymentMethod.toLowerCase() === "cod") {
+        advancePaid = 0;
+        balanceDue = totalAmount;
+        finalPaymentStatus = "pending";
     }
 
-    // Fix applied here: Columns (13 total) and VALUES (13 total) now align perfectly.
+    // Insert order data map matching database layout
     const insertOrderQuery = `
       INSERT INTO orders (
         user_id, address_id, address, payment_method,
@@ -89,17 +108,17 @@ router.post("/checkout", async (req, res) => {
     `;
 
     const orderResult = await client.query(insertOrderQuery, [
-      userId,                           // $1
-      addressId,                        // $2
-      JSON.stringify(address),          // $3
-      paymentMethod.toLowerCase(),      // $4
-      expectedDelivery || null,         // $5 (Handles fallback if missing)
-      subtotal,                         // $6
-      totalAmount,                      // $7
-      JSON.stringify(orderSummary),     // $8
-      paymentStatus,                    // $9
-      advancePaid,                      // $10
-      balanceDue                        // $11
+      userId,
+      addressId,
+      JSON.stringify(address),
+      paymentMethod.toLowerCase(),
+      expectedDelivery,
+      subtotal,
+      totalAmount,
+      JSON.stringify(orderSummary),
+      finalPaymentStatus, 
+      advancePaid,
+      balanceDue
     ]);
 
     // Clear cart after order is successfully placed
@@ -114,13 +133,13 @@ router.post("/checkout", async (req, res) => {
       advancePaid, 
       balanceDue,
       paymentMethod,
-      paymentStatus
+      paymentStatus: finalPaymentStatus
     });
 
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("Checkout Error:", error);
-    res.status(500).json({ error: "Internal Server Error", details: error.message });
+    res.status(500).json({ error: "Internal Server Error" });
   } finally {
     client.release();
   }
