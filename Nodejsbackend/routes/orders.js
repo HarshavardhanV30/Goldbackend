@@ -168,6 +168,38 @@ router.post("/checkout", async (req, res) => {
   }
 });
 
+// ✅ GET /orders/checkout/:orderId (Fetch a specific order details by ID for checkout confirmation summary)
+router.get("/checkout/:orderId", async (req, res) => {
+  const { orderId } = req.params;
+  try {
+    const result = await pool.query("SELECT * FROM orders WHERE id = $1", [orderId]);
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    const order = result.rows[0];
+    
+    // Format output similarly to standard user profile lists
+    res.status(200).json({
+      orderId: order.id,
+      createdAt: order.order_date,
+      status: order.status,
+      paymentStatus: order.payment_status || 'pending',
+      paymentMethod: order.payment_method,
+      address: typeof order.address === 'string' ? JSON.parse(order.address) : order.address,
+      totalAmount: parseFloat(order.total_amount),
+      advancePaid: parseFloat(order.advance_paid || 0),
+      balanceDue: parseFloat(order.balance_due || 0),
+      initialPaymentType: order.initial_payment_type,
+      orderSummary: typeof order.order_summary === 'string' ? JSON.parse(order.order_summary) : order.order_summary,
+    });
+  } catch (error) {
+    console.error("Error fetching checkout details:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ✅ GET /orders/all (Fetch all system orders for admin panels)
 router.get("/all", async (req, res) => {
   try {
