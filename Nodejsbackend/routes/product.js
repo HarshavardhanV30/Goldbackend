@@ -11,13 +11,12 @@ router.get("/", (req, res) => {
   res.send("Product route working");
 });
 
-// Cloudinary Storage
+// Cloudinary Storage Configuration
 const storage = new CloudinaryStorage({
-  cloudinary,
+  cloudinary: cloudinary,
   params: {
     folder: "products",
     allowed_formats: ["jpg", "png", "jpeg", "webp"],
-    public_id: (req, file) => Date.now() + "-" + file.originalname,
   },
 });
 
@@ -39,14 +38,18 @@ router.post("/add", upload.array("product_images", 10), async (req, res) => {
     product_description,
     state,
     district,
+    purity,
     mandal,
+    pincode,
   } = req.body;
 
   try {
-    const imageUrls = req.files
+    // 1. Get the uploaded URLs from Multer's file array
+    const imageUrls = req.files && req.files.length > 0
       ? req.files.map((file) => file.path)
       : [];
 
+    // 2. Perform the database insertion
     const result = await pool.query(
       `INSERT INTO products (
           product_id,
@@ -61,27 +64,31 @@ router.post("/add", upload.array("product_images", 10), async (req, res) => {
           product_images,
           state,
           district,
+          purity,
           mandal,
+          pincode,
           created_at
        )
        VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW()
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW()
        )
        RETURNING *`,
       [
         product_id,
         product_name,
         category_name,
-        parseFloat(weight),
-        parseFloat(offer_price),
-        parseFloat(original_price),
-        parseInt(stock_quantity),
+        weight ? parseFloat(weight) : 0,
+        offer_price ? parseFloat(offer_price) : 0,
+        original_price ? parseFloat(original_price) : 0,
+        stock_quantity ? parseInt(stock_quantity, 10) : 0,
         product_place,
         product_description,
-        imageUrls,
+        imageUrls, 
         state,
         district,
-        mandal,
+        purity, 
+        mandal, 
+        pincode,
       ]
     );
 
@@ -92,7 +99,6 @@ router.post("/add", upload.array("product_images", 10), async (req, res) => {
     });
   } catch (err) {
     console.error("Error adding product:", err.message);
-
     res.status(500).json({
       success: false,
       error: "Failed to add product",
@@ -108,11 +114,9 @@ router.get("/all", async (req, res) => {
     const result = await pool.query(
       "SELECT * FROM products ORDER BY created_at DESC"
     );
-
     res.status(200).json(result.rows);
   } catch (err) {
     console.error("Error fetching products:", err.message);
-
     res.status(500).json({
       error: "Failed to fetch products",
     });
@@ -120,16 +124,27 @@ router.get("/all", async (req, res) => {
 });
 
 /* ==================================
-   GET PRODUCT BY ID
+   GET PRODUCT BY ID (FIXED)
 ================================== */
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
-
+  
   try {
-    const result = await pool.query(
-      "SELECT * FROM products WHERE id = $1",
-      [id]
-    );
+    let result;
+
+    // Check if the id passed is a numeric integer (auto-increment primary key ID)
+    if (/^\d+$/.test(id)) {
+      result = await pool.query(
+        "SELECT * FROM products WHERE id = $1 OR product_id = $2",
+        [parseInt(id, 10), id]
+      );
+    } else {
+      // If it's alphanumeric/string, only search against the custom string product_id
+      result = await pool.query(
+        "SELECT * FROM products WHERE product_id = $1",
+        [id]
+      );
+    }
 
     if (result.rowCount === 0) {
       return res.status(404).json({
@@ -140,7 +155,6 @@ router.get("/:id", async (req, res) => {
     res.status(200).json(result.rows[0]);
   } catch (err) {
     console.error("Error fetching product:", err.message);
-
     res.status(500).json({
       error: "Failed to fetch product",
     });
@@ -148,23 +162,33 @@ router.get("/:id", async (req, res) => {
 });
 
 /* ==================================
-   DELETE PRODUCT
+   DELETE PRODUCT (FIXED TYPE HANDLING)
 ================================== */
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
   const getPublicIdFromUrl = (url) => {
     const parts = url.split("/");
-    const filename = parts[parts.length - 1].split(".")[0];
-
+    const filenameWithExtension = parts[parts.length - 1];
+    const filename = filenameWithExtension.split(".")[0];
     return `products/${filename}`;
   };
 
   try {
-    const result = await pool.query(
-      "SELECT * FROM products WHERE id = $1",
-      [id]
-    );
+    let result;
+
+    // Safe routing check for integer vs string match
+    if (/^\d+$/.test(id)) {
+      result = await pool.query(
+        "SELECT * FROM products WHERE id = $1 OR product_id = $2",
+        [parseInt(id, 10), id]
+      );
+    } else {
+      result = await pool.query(
+        "SELECT * FROM products WHERE product_id = $1",
+        [id]
+      );
+    }
 
     if (result.rowCount === 0) {
       return res.status(404).json({
@@ -175,6 +199,7 @@ router.delete("/:id", async (req, res) => {
     const product = result.rows[0];
     const images = product.product_images || [];
 
+    // Delete assets from Cloudinary storage
     await Promise.all(
       images.map((url) => {
         const publicId = getPublicIdFromUrl(url);
@@ -182,17 +207,24 @@ router.delete("/:id", async (req, res) => {
       })
     );
 
-    await pool.query(
-      "DELETE FROM products WHERE id = $1",
-      [id]
-    );
+    // Delete database entry safely
+    if (/^\d+$/.test(id)) {
+      await pool.query(
+        "DELETE FROM products WHERE id = $1 OR product_id = $2",
+        [parseInt(id, 10), id]
+      );
+    } else {
+      await pool.query(
+        "DELETE FROM products WHERE product_id = $1",
+        [id]
+      );
+    }
 
     res.status(200).json({
       message: "Product deleted successfully",
     });
   } catch (err) {
     console.error("Error deleting product:", err.message);
-
     res.status(500).json({
       error: "Failed to delete product",
     });
