@@ -136,6 +136,21 @@ router.get("/all", async (req, res) => {
   }
 });
 
+// NEW ROUTE: GET ALL SELLER GOLD PRODUCTS BY USER ID
+router.get("/user/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+  try {
+    const result = await pool.query(
+      "SELECT * FROM sellergold WHERE user_id = $1 ORDER BY id DESC",
+      [user_id]
+    );
+    res.status(200).json(result.rows);
+  } catch (err) {
+    console.error("Error fetching seller gold products for user:", err.message);
+    res.status(500).json({ error: "Failed to fetch user seller gold products" });
+  }
+});
+
 // 4. GET SELLER GOLD PRODUCT BY ID
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
