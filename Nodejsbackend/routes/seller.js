@@ -137,7 +137,7 @@ router.get("/all", async (req, res) => {
 });
 
 // NEW ROUTE: GET ALL SELLER GOLD PRODUCTS BY USER ID
-router.get("/user/:user_id", async (req, res) => {
+router.get("/:user_id", async (req, res) => {
   const { user_id } = req.params;
   try {
     const result = await pool.query(
