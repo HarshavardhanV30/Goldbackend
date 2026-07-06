@@ -27,6 +27,7 @@ const getPublicIdFromUrl = (url) => {
 // 1. ADD SELLER GOLD (Defaults status to 'pending')
 router.post("/add", upload.array("images", 10), async (req, res) => { 
   const {
+    user_id,      // Added field
     name,
     category,
     weight,
@@ -52,10 +53,11 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO sellergold 
-        (name, category, weight, purity, condition, price, description, images, full_name, mobilenumber, typeofselling, status, street_no, landmark, state, district, mandal, pincode)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        (user_id, name, category, weight, purity, condition, price, description, images, full_name, mobilenumber, typeofselling, status, street_no, landmark, state, district, mandal, pincode)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
        RETURNING *`,
       [
+        user_id,
         name, 
         category, 
         weight, 
@@ -90,7 +92,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
 // 2. UPDATE PRODUCT STATUS (Admin Route to approve/reject listings)
 router.patch("/:id/status", async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body; // Expecting 'approved' or 'rejected'
+  const { status, user_id } = req.body; // Expecting 'approved' or 'rejected', added user_id
 
   const allowedStatuses = ["pending", "approved", "rejected"];
   if (!allowedStatuses.includes(status)) {
@@ -98,10 +100,16 @@ router.patch("/:id/status", async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
-      "UPDATE sellergold SET status = $1 WHERE id = $2 RETURNING *",
-      [status, id]
-    );
+    // If user_id is provided in body, update it alongside status; otherwise just update status
+    let queryText = "UPDATE sellergold SET status = $1 WHERE id = $2 RETURNING *";
+    let queryParams = [status, id];
+
+    if (user_id) {
+      queryText = "UPDATE sellergold SET status = $1, user_id = $2 WHERE id = $3 RETURNING *";
+      queryParams = [status, user_id, id];
+    }
+
+    const result = await pool.query(queryText, queryParams);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Seller gold product not found" });
@@ -157,6 +165,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", upload.array("images", 10), async (req, res) => {
   const { id } = req.params;
   const {
+    user_id,      // Added field
     name,
     category,
     weight,
@@ -179,7 +188,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
   try {
     // Fetch current product data from database
     const currentProductResult = await pool.query(
-      "SELECT images, status FROM sellergold WHERE id = $1",
+      "SELECT images, status, user_id FROM sellergold WHERE id = $1",
       [id]
     );
 
@@ -189,6 +198,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
 
     const currentImages = currentProductResult.rows[0].images || [];
     const currentStatus = currentProductResult.rows[0].status;
+    const currentUserId = currentProductResult.rows[0].user_id;
 
     let finalImages = currentImages;
 
@@ -204,17 +214,19 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
     }
 
     const updatedStatus = status || currentStatus;
+    const updatedUserId = user_id || currentUserId;
 
     // Perform the full updates
     const result = await pool.query(
       `UPDATE sellergold 
-       SET name = $1, category = $2, weight = $3, purity = $4, condition = $5, 
-           price = $6, description = $7, images = $8, full_name = $9, 
-           mobilenumber = $10, typeofselling = $11, status = $12,
-           street_no = $13, landmark = $14, state = $15, district = $16, mandal = $17, pincode = $18
-       WHERE id = $19
+       SET user_id = $1, name = $2, category = $3, weight = $4, purity = $5, condition = $6, 
+           price = $7, description = $8, images = $9, full_name = $10, 
+           mobilenumber = $11, typeofselling = $12, status = $13,
+           street_no = $14, landmark = $15, state = $16, district = $17, mandal = $18, pincode = $19
+       WHERE id = $20
        RETURNING *`,
       [
+        updatedUserId,
         name, 
         category, 
         weight, 
