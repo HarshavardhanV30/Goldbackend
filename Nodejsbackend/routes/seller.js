@@ -38,6 +38,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
     description,
     full_name,
     mobilenumber,
+    addharcard, // Added Aadhar card field
     typeofselling,
     street_no,
     landmark,
@@ -54,10 +55,10 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
     const result = await pool.query(
       `INSERT INTO sellergold (
         name, category, weight, purity, condition, price, description, 
-        images, full_name, mobilenumber, typeofselling, 
+        images, full_name, mobilenumber, addharcard, typeofselling, 
         street_no, landmark, state, district, mandal, pincode
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING *`,
       [
         name || null,
@@ -70,6 +71,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
         imagePaths,
         full_name || null,
         mobilenumber || null,
+        addharcard || null, // Added value mapping
         typeofselling || null,
         street_no || null,
         landmark || null,
@@ -164,6 +166,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
     description,
     full_name,
     mobilenumber,
+    addharcard, // Added Aadhar card field
     typeofselling,
     status,
     street_no,
@@ -206,10 +209,10 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
       `UPDATE sellergold 
        SET name = $1, category = $2, weight = $3, purity = $4, condition = $5, 
            price = $6, description = $7, images = $8, full_name = $9, 
-           mobilenumber = $10, typeofselling = $11, status = $12,
-           street_no = $13, landmark = $14, state = $15, district = $16, 
-           mandal = $17, pincode = $18
-       WHERE id = $19
+           mobilenumber = $10, addharcard = $11, typeofselling = $12, status = $13,
+           street_no = $14, landmark = $15, state = $16, district = $17, 
+           mandal = $18, pincode = $19
+       WHERE id = $20
        RETURNING *`,
       [
         name || null,
@@ -222,6 +225,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
         finalImages,
         full_name || null,
         mobilenumber || null,
+        addharcard || null, // Added value mapping
         typeofselling || null,
         updatedStatus,
         street_no || null,
