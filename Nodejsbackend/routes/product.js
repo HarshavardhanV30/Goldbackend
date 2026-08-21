@@ -44,12 +44,10 @@ router.post("/add", upload.array("product_images", 10), async (req, res) => {
   } = req.body;
 
   try {
-    // 1. Get the uploaded URLs from Multer's file array
     const imageUrls = req.files && req.files.length > 0
       ? req.files.map((file) => file.path)
       : [];
 
-    // 2. Perform the database insertion
     const result = await pool.query(
       `INSERT INTO products (
           product_id,
@@ -102,12 +100,13 @@ router.post("/add", upload.array("product_images", 10), async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Failed to add product",
+      details: err.message, // Helpful for debugging on Railway logs
     });
   }
 });
 
 /* ==================================
-   GET ALL PRODUCTS
+   GET ALL PRODUCTS (Endpoint: /products/all)
 ================================== */
 router.get("/all", async (req, res) => {
   try {
@@ -119,12 +118,13 @@ router.get("/all", async (req, res) => {
     console.error("Error fetching products:", err.message);
     res.status(500).json({
       error: "Failed to fetch products",
+      details: err.message,
     });
   }
 });
 
 /* ==================================
-   GET PRODUCT BY ID (FIXED)
+   GET PRODUCT BY ID
 ================================== */
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
@@ -132,14 +132,12 @@ router.get("/:id", async (req, res) => {
   try {
     let result;
 
-    // Check if the id passed is a numeric integer (auto-increment primary key ID)
     if (/^\d+$/.test(id)) {
       result = await pool.query(
         "SELECT * FROM products WHERE id = $1 OR product_id = $2",
         [parseInt(id, 10), id]
       );
     } else {
-      // If it's alphanumeric/string, only search against the custom string product_id
       result = await pool.query(
         "SELECT * FROM products WHERE product_id = $1",
         [id]
@@ -162,7 +160,7 @@ router.get("/:id", async (req, res) => {
 });
 
 /* ==================================
-   DELETE PRODUCT (FIXED TYPE HANDLING)
+   DELETE PRODUCT
 ================================== */
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
@@ -177,7 +175,6 @@ router.delete("/:id", async (req, res) => {
   try {
     let result;
 
-    // Safe routing check for integer vs string match
     if (/^\d+$/.test(id)) {
       result = await pool.query(
         "SELECT * FROM products WHERE id = $1 OR product_id = $2",
@@ -199,7 +196,6 @@ router.delete("/:id", async (req, res) => {
     const product = result.rows[0];
     const images = product.product_images || [];
 
-    // Delete assets from Cloudinary storage
     await Promise.all(
       images.map((url) => {
         const publicId = getPublicIdFromUrl(url);
@@ -207,7 +203,6 @@ router.delete("/:id", async (req, res) => {
       })
     );
 
-    // Delete database entry safely
     if (/^\d+$/.test(id)) {
       await pool.query(
         "DELETE FROM products WHERE id = $1 OR product_id = $2",
