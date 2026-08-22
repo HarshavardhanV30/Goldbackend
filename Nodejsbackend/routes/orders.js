@@ -61,26 +61,18 @@ router.post("/checkout", async (req, res) => {
 
     const totalAmount = subtotal;
     
-    // Server-side calculation values determined entirely from business rules
     let advancePaid = 0;
     let balanceDue = totalAmount;
     let finalPaymentStatus = "pending";
-    let initialPaymentType = "full"; // Default is full
+    let initialPaymentType = "full";
 
     if (paymentMethod.toLowerCase() === "upi") {
         advancePaid = Number(advancePaidAmount) || 0;
 
-        if (advancePaid < 0) {
-            advancePaid = 0;
-        }
+        if (advancePaid < 0) advancePaid = 0;
+        if (advancePaid > totalAmount) advancePaid = totalAmount;
 
-        if (advancePaid > totalAmount) {
-            advancePaid = totalAmount;
-        }
-
-        balanceDue = parseFloat(
-            (totalAmount - advancePaid).toFixed(2)
-        );
+        balanceDue = parseFloat((totalAmount - advancePaid).toFixed(2));
 
         if (balanceDue === 0) {
             finalPaymentStatus = "completed";
@@ -90,33 +82,23 @@ router.post("/checkout", async (req, res) => {
             finalPaymentStatus = "pending";
         }
 
-        // Calculate payment type percentage if totalAmount is greater than 0
         if (totalAmount > 0) {
           const paidPercentage = Math.round((advancePaid / totalAmount) * 100);
           
-          if (paidPercentage === 10) {
-            initialPaymentType = "10%";
-          } else if (paidPercentage === 20) {
-            initialPaymentType = "20%";
-          } else if (paidPercentage === 50) {
-            initialPaymentType = "50%";
-          } else if (paidPercentage === 75) {
-            initialPaymentType = "75%";
-          } else if (paidPercentage === 100) {
-            initialPaymentType = "full";
-          } else {
-            initialPaymentType = "partial"; // Fallback identifier if custom amount is outside fixed thresholds
-          }
+          if (paidPercentage === 10) initialPaymentType = "10%";
+          else if (paidPercentage === 20) initialPaymentType = "20%";
+          else if (paidPercentage === 50) initialPaymentType = "50%";
+          else if (paidPercentage === 75) initialPaymentType = "75%";
+          else if (paidPercentage === 100) initialPaymentType = "full";
+          else initialPaymentType = "partial";
         }
-
     } else if (paymentMethod.toLowerCase() === "cod") {
         advancePaid = 0;
         balanceDue = totalAmount;
         finalPaymentStatus = "pending";
-        initialPaymentType = "cod"; // or "pending" / "full" based on how you log COD defaults
+        initialPaymentType = "cod";
     }
 
-    // Insert order data map matching database layout
     const insertOrderQuery = `
       INSERT INTO orders (
         user_id, address_id, address, payment_method,
@@ -143,9 +125,7 @@ router.post("/checkout", async (req, res) => {
       initialPaymentType
     ]);
 
-    // Clear cart after order is successfully placed
     await client.query("DELETE FROM carts WHERE user_id = $1", [userId]);
-
     await client.query("COMMIT");
     
     res.status(201).json({ 
@@ -168,38 +148,6 @@ router.post("/checkout", async (req, res) => {
   }
 });
 
-// ✅ GET /orders/checkout/:orderId (Fetch a specific order details by ID for checkout confirmation summary)
-router.get("/checkout/:orderId", async (req, res) => {
-  const { orderId } = req.params;
-  try {
-    const result = await pool.query("SELECT * FROM orders WHERE id = $1", [orderId]);
-    
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Order not found" });
-    }
-
-    const order = result.rows[0];
-    
-    // Format output similarly to standard user profile lists
-    res.status(200).json({
-      orderId: order.id,
-      createdAt: order.order_date,
-      status: order.status,
-      paymentStatus: order.payment_status || 'pending',
-      paymentMethod: order.payment_method,
-      address: typeof order.address === 'string' ? JSON.parse(order.address) : order.address,
-      totalAmount: parseFloat(order.total_amount),
-      advancePaid: parseFloat(order.advance_paid || 0),
-      balanceDue: parseFloat(order.balance_due || 0),
-      initialPaymentType: order.initial_payment_type,
-      orderSummary: typeof order.order_summary === 'string' ? JSON.parse(order.order_summary) : order.order_summary,
-    });
-  } catch (error) {
-    console.error("Error fetching checkout details:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 // ✅ GET /orders/all (Fetch all system orders for admin panels)
 router.get("/all", async (req, res) => {
   try {
@@ -211,56 +159,9 @@ router.get("/all", async (req, res) => {
   }
 });
 
-// ✅ GET /orders/list/:userId (Fetch formatted orders for a specific user profile)
-router.get('/list/:userId', async (req, res) => {
-  const { userId } = req.params;
-
-  try {
-    const ordersResult = await pool.query(
-      "SELECT * FROM orders WHERE user_id = $1 ORDER BY order_date DESC", 
-      [userId]
-    );
-    const orders = [];
-
-    for (const order of ordersResult.rows) {
-      const orderSummary = order.order_summary || [];
-
-      // Safe deep parsing if saved as string JSON or native array JSONB
-      const itemsArray = typeof orderSummary === 'string' ? JSON.parse(orderSummary) : orderSummary;
-
-      const formattedProducts = itemsArray.map(item => ({
-        title: item.name || "Unknown Product",
-        quantity: item.quantity || 1,
-        purity: item.purity || null,
-        price: parseFloat(item.price) || 0,
-        image: item.image || null,
-      }));
-
-      orders.push({
-        orderId: order.id,
-        createdAt: order.order_date,
-        status: order.status,
-        paymentStatus: order.payment_status || 'pending',
-        paymentMethod: order.payment_method,
-        address: typeof order.address === 'string' ? JSON.parse(order.address) : order.address,
-        totalAmount: parseFloat(order.total_amount),
-        advancePaid: parseFloat(order.advance_paid || 0),
-        balanceDue: parseFloat(order.balance_due || 0),
-        initialPaymentType: order.initial_payment_type,
-        ordersummary: formattedProducts,
-      });
-    }
-
-    res.status(200).json({ orders });
-  } catch (error) {
-    console.error("Error fetching orders:", error);
-    res.status(500).json({ error: "Failed to fetch orders" });
-  }
-});
-
-// ✅ PUT /orders/update-status (Update fulfillments and payment confirmations)
-router.put('/update-status', async (req, res) => {
-  const { orderId, status, paymentStatus } = req.body;
+// ✅ POST /orders/update-status (Fixed to match frontend POST call and support cancellation reasons)
+router.post('/update-status', async (req, res) => {
+  const { orderId, status, paymentStatus, cancellation_reason } = req.body;
 
   if (!orderId) {
     return res.status(400).json({ error: "Order ID is required" });
@@ -278,6 +179,11 @@ router.put('/update-status', async (req, res) => {
       if (params.length > 0) query += ", ";
       params.push(paymentStatus);
       query += `payment_status = $${params.length}`;
+    }
+    if (cancellation_reason !== undefined) {
+      if (params.length > 0) query += ", ";
+      params.push(cancellation_reason);
+      query += `cancellation_reason = $${params.length}`;
     }
 
     if (params.length === 0) {
@@ -314,62 +220,6 @@ router.delete('/delete/:orderId', async (req, res) => {
     res.status(200).json({ message: "Order deleted successfully", order: result.rows[0] });
   } catch (error) {
     console.error("Error deleting order:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-});
-
-
-// ==========================================
-// 2. SHOPPING CART APIS
-// ==========================================
-
-// ✅ POST /addcart
-router.post('/addcart', async (req, res) => {
-  const { userId, product } = req.body;
-
-  if (!userId || !product?.name) {
-    return res.status(400).json({ message: 'Missing required fields' });
-  }
-
-  try {
-    await pool.query(
-      `INSERT INTO carts (user_id, image, name, price, quantity, weight, purity, added_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-      [userId, product.image, product.name, product.price, product.quantity, product.weight, product.purity]
-    );
-
-    res.status(200).json({ message: 'Product added to cart successfully' });
-  } catch (error) {
-    console.error('Error adding to cart:', error);
-    res.status(500).json({ message: 'Internal server error' });
-  }
-});
-
-// ✅ GET /cartlist/:userId
-router.get('/cartlist/:userId', async (req, res) => {
-  const { userId } = req.params;
-  try {
-    const result = await pool.query("SELECT * FROM carts WHERE user_id = $1", [userId]);
-    res.status(200).json({ cart: result.rows });
-  } catch (error) {
-    console.error("Error fetching cart items:", error);
-    res.status(500).json({ error: "Failed to fetch cart items" });
-  }
-});
-
-// ✅ DELETE /cartdelete/:cartId
-router.delete('/cartdelete/:cartId', async (req, res) => {
-  const { cartId } = req.params;
-
-  try {
-    const result = await pool.query("DELETE FROM carts WHERE id = $1 RETURNING *", [cartId]);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Cart item not found" });
-    }
-
-    res.status(200).json({ message: "Cart item deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting cart item:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
