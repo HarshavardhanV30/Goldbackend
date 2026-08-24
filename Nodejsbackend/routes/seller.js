@@ -26,6 +26,14 @@ const getPublicIdFromUrl = (url) => {
   return `seller/${filename}`;
 };
 
+// Helper to format JS arrays into Postgres text array format: '{item1,item2}' or '{}'
+const toSqlArray = (arr) => {
+  if (!arr || arr.length === 0) return "{}";
+  // Escape quotes if needed and wrap in curly braces
+  const escaped = arr.map(item => `"${item.replace(/"/g, '\\"')}"`);
+  return `{${escaped.join(",")}}`;
+};
+
 // 1. ADD SELLER GOLD (POST)
 router.post("/add", upload.array("images", 10), async (req, res) => {
   const {
@@ -50,6 +58,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
 
   const files = req.files || [];
   const imagePaths = files.map((file) => file.path);
+  const sqlImages = toSqlArray(imagePaths);
 
   try {
     const result = await pool.query(
@@ -58,7 +67,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
         images, full_name, mobilenumber, addharnumber, typeofselling, 
         street_no, landmark, state, district, mandal, pincode, created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::text[], $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
       RETURNING *`,
       [
         name || null,
@@ -68,7 +77,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
         condition || null,
         price ? parseFloat(price) : null,
         description || null,
-        imagePaths, // Passed directly as an array for PostgreSQL TEXT[] column
+        sqlImages,
         full_name || null,
         mobilenumber || null,
         addharnumber || null,
@@ -223,12 +232,13 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
       finalImages = req.files.map((file) => file.path);
     }
 
+    const sqlImages = toSqlArray(finalImages);
     const updatedStatus = status || currentStatus;
 
     const result = await pool.query(
       `UPDATE sellergold 
        SET name = $1, category = $2, weight = $3, purity = $4, condition = $5, 
-           price = $6, description = $7, images = $8, full_name = $9, 
+           price = $6, description = $7, images = $8::text[], full_name = $9, 
            mobilenumber = $10, addharnumber = $11, typeofselling = $12, status = $13,
            street_no = $14, landmark = $15, state = $16, district = $17, 
            mandal = $18, pincode = $19
@@ -242,7 +252,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
         condition || null,
         price ? parseFloat(price) : null,
         description || null,
-        finalImages, // Passed directly as array for TEXT[] column type
+        sqlImages,
         full_name || null,
         mobilenumber || null,
         addharnumber || null,
