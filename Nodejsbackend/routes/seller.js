@@ -59,7 +59,6 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
     pincode,
   } = req.body;
 
-  // Safely fallback to an empty array if no files are uploaded
   const files = req.files || [];
   const imagePaths = files.map((file) => file.path);
 
@@ -68,9 +67,9 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
       `INSERT INTO sellergold (
         name, category, weight, purity, condition, price, description, 
         images, full_name, mobilenumber, addharnumber, typeofselling, 
-        street_no, landmark, state, district, mandal, pincode
+        street_no, landmark, state, district, mandal, pincode, created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
       RETURNING *`,
       [
         name || null,
@@ -101,7 +100,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
 
     res.status(201).json({
       message: "Seller gold product added successfully and is awaiting approval",
-      data: responseData,
+      data: responseData, // This will now include the automatically generated created_at timestamp
     });
   } catch (err) {
     console.error("Error inserting seller gold product:", err.message);
