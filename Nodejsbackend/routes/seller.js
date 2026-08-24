@@ -26,7 +26,7 @@ const getPublicIdFromUrl = (url) => {
   return `seller/${filename}`;
 };
 
-// Helper to safely parse images from database (handles both stringified JSON and direct arrays)
+// Helper to safely parse images from database
 const parseImages = (imagesField) => {
   if (!imagesField) return [];
   if (Array.isArray(imagesField)) return imagesField;
@@ -37,7 +37,7 @@ const parseImages = (imagesField) => {
   }
 };
 
-// 1. ADD SELLER GOLD (Defaults status to 'pending' via Database Default)
+// 1. ADD SELLER GOLD
 router.post("/add", upload.array("images", 10), async (req, res) => {
   const {
     name,
@@ -59,6 +59,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
     pincode,
   } = req.body;
 
+  // Safely fallback to an empty array if no files are uploaded
   const files = req.files || [];
   const imagePaths = files.map((file) => file.path);
 
@@ -79,7 +80,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
         condition || null,
         price ? parseFloat(price) : null,
         description || null,
-        JSON.stringify(imagePaths), // Stored as JSON string
+        JSON.stringify(imagePaths),
         full_name || null,
         mobilenumber || null,
         addharnumber || null,
@@ -93,7 +94,6 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
       ]
     );
 
-    // Format response data to parse images back to an array for client convenience
     const responseData = {
       ...result.rows[0],
       images: parseImages(result.rows[0].images),
@@ -105,11 +105,11 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
     });
   } catch (err) {
     console.error("Error inserting seller gold product:", err.message);
-    res.status(500).json({ error: "Failed to add seller gold product" });
+    res.status(500).json({ error: "Failed to add seller gold product: " + err.message });
   }
 });
 
-// 2. UPDATE PRODUCT STATUS (Admin Route to approve/reject listings)
+// 2. UPDATE PRODUCT STATUS
 router.patch("/:id/status", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -151,7 +151,6 @@ router.get("/all", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM sellergold ORDER BY id DESC");
     
-    // Parse images for each row
     const formattedRows = result.rows.map(row => ({
       ...row,
       images: parseImages(row.images),
@@ -226,7 +225,6 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
 
     let finalImages = currentImages;
 
-    // If new images uploaded, remove old Cloudinary assets & replace array
     if (req.files && req.files.length > 0) {
       await Promise.all(
         currentImages.map((url) => {
@@ -256,7 +254,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
         condition || null,
         price ? parseFloat(price) : null,
         description || null,
-        JSON.stringify(finalImages), // Store stringified array
+        JSON.stringify(finalImages),
         full_name || null,
         mobilenumber || null,
         addharnumber || null,
@@ -287,7 +285,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
   }
 });
 
-// 6. DELETE SELLER GOLD PRODUCT (And its Cloudinary images)
+// 6. DELETE SELLER GOLD PRODUCT
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
