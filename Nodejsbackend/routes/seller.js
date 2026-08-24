@@ -26,6 +26,17 @@ const getPublicIdFromUrl = (url) => {
   return `seller/${filename}`;
 };
 
+// Helper to safely parse images from database (handles both stringified JSON and direct arrays)
+const parseImages = (imagesField) => {
+  if (!imagesField) return [];
+  if (Array.isArray(imagesField)) return imagesField;
+  try {
+    return JSON.parse(imagesField);
+  } catch (e) {
+    return [];
+  }
+};
+
 // 1. ADD SELLER GOLD (Defaults status to 'pending' via Database Default)
 router.post("/add", upload.array("images", 10), async (req, res) => {
   const {
@@ -68,7 +79,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
         condition || null,
         price ? parseFloat(price) : null,
         description || null,
-        imagePaths,
+        JSON.stringify(imagePaths), // Stored as JSON string
         full_name || null,
         mobilenumber || null,
         addharnumber || null,
@@ -82,9 +93,15 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
       ]
     );
 
+    // Format response data to parse images back to an array for client convenience
+    const responseData = {
+      ...result.rows[0],
+      images: parseImages(result.rows[0].images),
+    };
+
     res.status(201).json({
       message: "Seller gold product added successfully and is awaiting approval",
-      data: result.rows[0],
+      data: responseData,
     });
   } catch (err) {
     console.error("Error inserting seller gold product:", err.message);
@@ -114,9 +131,14 @@ router.patch("/:id/status", async (req, res) => {
       return res.status(404).json({ error: "Seller gold product not found" });
     }
 
+    const responseData = {
+      ...result.rows[0],
+      images: parseImages(result.rows[0].images),
+    };
+
     res.status(200).json({
       message: `Product status updated to '${status}' successfully`,
-      data: result.rows[0],
+      data: responseData,
     });
   } catch (err) {
     console.error("Error updating seller gold status:", err.message);
@@ -128,7 +150,14 @@ router.patch("/:id/status", async (req, res) => {
 router.get("/all", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM sellergold ORDER BY id DESC");
-    res.status(200).json(result.rows);
+    
+    // Parse images for each row
+    const formattedRows = result.rows.map(row => ({
+      ...row,
+      images: parseImages(row.images),
+    }));
+
+    res.status(200).json(formattedRows);
   } catch (err) {
     console.error("Error fetching seller gold products:", err.message);
     res.status(500).json({ error: "Failed to fetch seller gold products" });
@@ -146,7 +175,12 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Seller gold product not found" });
     }
 
-    res.status(200).json(result.rows[0]);
+    const responseData = {
+      ...result.rows[0],
+      images: parseImages(result.rows[0].images),
+    };
+
+    res.status(200).json(responseData);
   } catch (err) {
     console.error("Error fetching seller gold product:", err.message);
     res.status(500).json({ error: "Failed to fetch seller gold product" });
@@ -187,7 +221,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
       return res.status(404).json({ error: "Seller gold product not found" });
     }
 
-    const currentImages = currentProductResult.rows[0].images || [];
+    const currentImages = parseImages(currentProductResult.rows[0].images);
     const currentStatus = currentProductResult.rows[0].status;
 
     let finalImages = currentImages;
@@ -222,7 +256,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
         condition || null,
         price ? parseFloat(price) : null,
         description || null,
-        finalImages,
+        JSON.stringify(finalImages), // Store stringified array
         full_name || null,
         mobilenumber || null,
         addharnumber || null,
@@ -238,9 +272,14 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
       ]
     );
 
+    const responseData = {
+      ...result.rows[0],
+      images: parseImages(result.rows[0].images),
+    };
+
     res.status(200).json({
       message: "Seller gold product updated successfully",
-      data: result.rows[0],
+      data: responseData,
     });
   } catch (err) {
     console.error("Error updating seller gold product:", err.message);
@@ -259,7 +298,7 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    const imagePaths = result.rows[0].images || [];
+    const imagePaths = parseImages(result.rows[0].images);
 
     await Promise.all(
       imagePaths.map((url) => {
