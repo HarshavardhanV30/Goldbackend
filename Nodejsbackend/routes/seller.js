@@ -29,9 +29,6 @@ const getPublicIdFromUrl = (url) => {
 // 1. ADD SELLER GOLD (POST)
 router.post("/add", upload.array("images", 10), async (req, res) => {
   try {
-    console.log("Incoming Body:", req.body);
-    console.log("Incoming Files:", req.files);
-
     const {
       name,
       category,
@@ -42,7 +39,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
       description,
       full_name,
       mobilenumber,
-      addharnumber,
+      addharcard, // Corrected from addharnumber to match database column
       typeofselling,
       street_no,
       landmark,
@@ -58,7 +55,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
     const result = await pool.query(
       `INSERT INTO sellergold (
         name, category, weight, purity, condition, price, description, 
-        images, full_name, mobilenumber, addharnumber, typeofselling, 
+        images, full_name, mobilenumber, addharcard, typeofselling, 
         street_no, landmark, state, district, mandal, pincode, created_at
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
@@ -71,10 +68,10 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
         condition || null,
         price ? parseFloat(price) : null,
         description || null,
-        imagePaths, // node-postgres automatically converts JS arrays to PostgreSQL text arrays
+        imagePaths,
         full_name || null,
         mobilenumber || null,
-        addharnumber || null,
+        addharcard || null,
         typeofselling || null,
         street_no || null,
         landmark || null,
@@ -95,11 +92,8 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
       data: responseData,
     });
   } catch (err) {
-    console.error("CRITICAL ERROR in /seller/add:", err);
-    return res.status(500).json({ 
-      error: "Failed to add seller gold product", 
-      details: err.message 
-    });
+    console.error("Error inserting seller gold product:", err.message);
+    return res.status(500).json({ error: "Failed to add seller gold product: " + err.message });
   }
 });
 
@@ -136,7 +130,7 @@ router.patch("/:id/status", async (req, res) => {
     });
   } catch (err) {
     console.error("Error updating seller gold status:", err.message);
-    return res.status(500).json({ error: "Failed to update product status", details: err.message });
+    return res.status(500).json({ error: "Failed to update product status" });
   }
 });
 
@@ -153,7 +147,7 @@ router.get("/all", async (req, res) => {
     return res.status(200).json(formattedRows);
   } catch (err) {
     console.error("Error fetching seller gold products:", err.message);
-    return res.status(500).json({ error: "Failed to fetch seller gold products", details: err.message });
+    return res.status(500).json({ error: "Failed to fetch seller gold products" });
   }
 });
 
@@ -176,7 +170,7 @@ router.get("/:id", async (req, res) => {
     return res.status(200).json(responseData);
   } catch (err) {
     console.error("Error fetching seller gold product:", err.message);
-    return res.status(500).json({ error: "Failed to fetch seller gold product", details: err.message });
+    return res.status(500).json({ error: "Failed to fetch seller gold product" });
   }
 });
 
@@ -193,7 +187,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
     description,
     full_name,
     mobilenumber,
-    addharnumber,
+    addharcard, // Corrected to match database column
     typeofselling,
     status,
     street_no,
@@ -235,7 +229,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
       `UPDATE sellergold 
        SET name = $1, category = $2, weight = $3, purity = $4, condition = $5, 
            price = $6, description = $7, images = $8, full_name = $9, 
-           mobilenumber = $10, addharnumber = $11, typeofselling = $12, status = $13,
+           mobilenumber = $10, addharcard = $11, typeofselling = $12, status = $13,
            street_no = $14, landmark = $15, state = $16, district = $17, 
            mandal = $18, pincode = $19
        WHERE id = $20
@@ -251,7 +245,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
         finalImages,
         full_name || null,
         mobilenumber || null,
-        addharnumber || null,
+        addharcard || null,
         typeofselling || null,
         updatedStatus,
         street_no || null,
@@ -275,7 +269,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
     });
   } catch (err) {
     console.error("Error updating seller gold product:", err.message);
-    return res.status(500).json({ error: "Failed to update seller gold product", details: err.message });
+    return res.status(500).json({ error: "Failed to update seller gold product: " + err.message });
   }
 });
 
@@ -304,7 +298,7 @@ router.delete("/:id", async (req, res) => {
     return res.status(200).json({ message: "Seller gold product deleted successfully" });
   } catch (err) {
     console.error("Error deleting seller gold product:", err.message);
-    return res.status(500).json({ error: "Failed to delete seller gold product", details: err.message });
+    return res.status(500).json({ error: "Failed to delete seller gold product" });
   }
 });
 
