@@ -26,18 +26,7 @@ const getPublicIdFromUrl = (url) => {
   return `seller/${filename}`;
 };
 
-// Helper to safely parse images from database
-const parseImages = (imagesField) => {
-  if (!imagesField) return [];
-  if (Array.isArray(imagesField)) return imagesField;
-  try {
-    return JSON.parse(imagesField);
-  } catch (e) {
-    return [];
-  }
-};
-
-// 1. ADD SELLER GOLD
+// 1. ADD SELLER GOLD (POST)
 router.post("/add", upload.array("images", 10), async (req, res) => {
   const {
     name,
@@ -79,7 +68,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
         condition || null,
         price ? parseFloat(price) : null,
         description || null,
-        JSON.stringify(imagePaths),
+        imagePaths, // Passed directly as an array for PostgreSQL TEXT[] column
         full_name || null,
         mobilenumber || null,
         addharnumber || null,
@@ -95,12 +84,12 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
 
     const responseData = {
       ...result.rows[0],
-      images: parseImages(result.rows[0].images),
+      images: result.rows[0].images || [],
     };
 
     res.status(201).json({
       message: "Seller gold product added successfully and is awaiting approval",
-      data: responseData, // This will now include the automatically generated created_at timestamp
+      data: responseData,
     });
   } catch (err) {
     console.error("Error inserting seller gold product:", err.message);
@@ -108,7 +97,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
   }
 });
 
-// 2. UPDATE PRODUCT STATUS
+// 2. UPDATE PRODUCT STATUS (PATCH)
 router.patch("/:id/status", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -132,7 +121,7 @@ router.patch("/:id/status", async (req, res) => {
 
     const responseData = {
       ...result.rows[0],
-      images: parseImages(result.rows[0].images),
+      images: result.rows[0].images || [],
     };
 
     res.status(200).json({
@@ -145,14 +134,14 @@ router.patch("/:id/status", async (req, res) => {
   }
 });
 
-// 3. GET ALL SELLER GOLD PRODUCTS
+// 3. GET ALL SELLER GOLD PRODUCTS (GET)
 router.get("/all", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM sellergold ORDER BY id DESC");
     
     const formattedRows = result.rows.map(row => ({
       ...row,
-      images: parseImages(row.images),
+      images: row.images || [],
     }));
 
     res.status(200).json(formattedRows);
@@ -162,7 +151,7 @@ router.get("/all", async (req, res) => {
   }
 });
 
-// 4. GET SELLER GOLD PRODUCT BY ID
+// 4. GET SELLER GOLD PRODUCT BY ID (GET)
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -175,7 +164,7 @@ router.get("/:id", async (req, res) => {
 
     const responseData = {
       ...result.rows[0],
-      images: parseImages(result.rows[0].images),
+      images: result.rows[0].images || [],
     };
 
     res.status(200).json(responseData);
@@ -185,7 +174,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// 5. UPDATE SELLER GOLD PRODUCT DETAILS (PUT API)
+// 5. UPDATE SELLER GOLD PRODUCT DETAILS (PUT)
 router.put("/:id", upload.array("images", 10), async (req, res) => {
   const { id } = req.params;
   const {
@@ -219,7 +208,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
       return res.status(404).json({ error: "Seller gold product not found" });
     }
 
-    const currentImages = parseImages(currentProductResult.rows[0].images);
+    const currentImages = currentProductResult.rows[0].images || [];
     const currentStatus = currentProductResult.rows[0].status;
 
     let finalImages = currentImages;
@@ -253,7 +242,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
         condition || null,
         price ? parseFloat(price) : null,
         description || null,
-        JSON.stringify(finalImages),
+        finalImages, // Passed directly as array for TEXT[] column type
         full_name || null,
         mobilenumber || null,
         addharnumber || null,
@@ -271,7 +260,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
 
     const responseData = {
       ...result.rows[0],
-      images: parseImages(result.rows[0].images),
+      images: result.rows[0].images || [],
     };
 
     res.status(200).json({
@@ -280,11 +269,11 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
     });
   } catch (err) {
     console.error("Error updating seller gold product:", err.message);
-    res.status(500).json({ error: "Failed to update seller gold product" });
+    res.status(500).json({ error: "Failed to update seller gold product: " + err.message });
   }
 });
 
-// 6. DELETE SELLER GOLD PRODUCT
+// 6. DELETE SELLER GOLD PRODUCT (DELETE)
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -295,7 +284,7 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    const imagePaths = parseImages(result.rows[0].images);
+    const imagePaths = result.rows[0].images || [];
 
     await Promise.all(
       imagePaths.map((url) => {
