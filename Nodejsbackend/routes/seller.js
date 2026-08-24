@@ -37,7 +37,7 @@ const parseImages = (imagesField) => {
   }
 };
 
-// 1. ADD SELLER GOLD (POST)
+// 1. ADD SELLER GOLD
 router.post("/add", upload.array("images", 10), async (req, res) => {
   const {
     name,
@@ -100,7 +100,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
 
     res.status(201).json({
       message: "Seller gold product added successfully and is awaiting approval",
-      data: responseData,
+      data: responseData, // This will now include the automatically generated created_at timestamp
     });
   } catch (err) {
     console.error("Error inserting seller gold product:", err.message);
@@ -108,7 +108,7 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
   }
 });
 
-// 2. UPDATE PRODUCT STATUS (PATCH)
+// 2. UPDATE PRODUCT STATUS
 router.patch("/:id/status", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -145,7 +145,7 @@ router.patch("/:id/status", async (req, res) => {
   }
 });
 
-// 3. GET ALL SELLER GOLD PRODUCTS (GET)
+// 3. GET ALL SELLER GOLD PRODUCTS
 router.get("/all", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM sellergold ORDER BY id DESC");
@@ -162,7 +162,7 @@ router.get("/all", async (req, res) => {
   }
 });
 
-// 4. GET SELLER GOLD PRODUCT BY ID (GET)
+// 4. GET SELLER GOLD PRODUCT BY ID
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -185,7 +185,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// 5. UPDATE SELLER GOLD PRODUCT DETAILS (PUT)
+// 5. UPDATE SELLER GOLD PRODUCT DETAILS (PUT API)
 router.put("/:id", upload.array("images", 10), async (req, res) => {
   const { id } = req.params;
   const {
@@ -284,7 +284,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
   }
 });
 
-// 6. DELETE SELLER GOLD PRODUCT (DELETE)
+// 6. DELETE SELLER GOLD PRODUCT
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
