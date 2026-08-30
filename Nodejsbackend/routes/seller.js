@@ -30,7 +30,6 @@ const getPublicIdFromUrl = (url) => {
 router.post("/add", upload.array("images", 10), async (req, res) => {
   try {
     const {
-      user_id, // Added user_id
       name,
       category,
       weight,
@@ -55,14 +54,13 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO sellergold (
-        user_id, name, category, weight, purity, condition, price, description, 
+        name, category, weight, purity, condition, price, description, 
         images, full_name, mobilenumber, addharcard, typeofselling, 
         street_no, landmark, state, district, mandal, pincode, created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
       RETURNING *`,
       [
-        user_id || null,
         name || null,
         category || null,
         weight ? parseFloat(weight) : null,
@@ -180,7 +178,6 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", upload.array("images", 10), async (req, res) => {
   const { id } = req.params;
   const {
-    user_id, // Added user_id
     name,
     category,
     weight,
@@ -190,7 +187,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
     description,
     full_name,
     mobilenumber,
-    addharcard,
+    addharcard, // Corrected to match database column
     typeofselling,
     status,
     street_no,
@@ -203,7 +200,7 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
 
   try {
     const currentProductResult = await pool.query(
-      "SELECT images, status, user_id FROM sellergold WHERE id = $1",
+      "SELECT images, status FROM sellergold WHERE id = $1",
       [id]
     );
 
@@ -213,7 +210,6 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
 
     const currentImages = currentProductResult.rows[0].images || [];
     const currentStatus = currentProductResult.rows[0].status;
-    const currentUserId = currentProductResult.rows[0].user_id;
 
     let finalImages = currentImages;
 
@@ -228,19 +224,17 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
     }
 
     const updatedStatus = status || currentStatus;
-    const updatedUserId = user_id !== undefined ? user_id : currentUserId; // Retain current user_id if not provided
 
     const result = await pool.query(
       `UPDATE sellergold 
-       SET user_id = $1, name = $2, category = $3, weight = $4, purity = $5, condition = $6, 
-           price = $7, description = $8, images = $9, full_name = $10, 
-           mobilenumber = $11, addharcard = $12, typeofselling = $13, status = $14,
-           street_no = $15, landmark = $16, state = $17, district = $18, 
-           mandal = $19, pincode = $20
-       WHERE id = $21
+       SET name = $1, category = $2, weight = $3, purity = $4, condition = $5, 
+           price = $6, description = $7, images = $8, full_name = $9, 
+           mobilenumber = $10, addharcard = $11, typeofselling = $12, status = $13,
+           street_no = $14, landmark = $15, state = $16, district = $17, 
+           mandal = $18, pincode = $19
+       WHERE id = $20
        RETURNING *`,
       [
-        updatedUserId || null,
         name || null,
         category || null,
         weight ? parseFloat(weight) : null,
