@@ -5,13 +5,25 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false,
   },
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  keepAlive: true,
+});
+
+pool.on("connect", () => {
+  console.log("✅ PostgreSQL connected");
+});
+
+pool.on("error", (err) => {
+  console.error("❌ PostgreSQL pool error:", err.message);
 });
 
 pool.query("SELECT NOW()", (err, result) => {
   if (err) {
-    console.error("❌ DATABASE CONNECTION FAILED:", err.message);
+    console.error("❌ DATABASE ERROR:", err.message);
   } else {
-    console.log("✅ DATABASE CONNECTED:", result.rows[0]);
+    console.log("✅ DATABASE TEST:", result.rows[0]);
   }
 });
 
