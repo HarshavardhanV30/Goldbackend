@@ -6,7 +6,6 @@ const pool = require("../db");
 
 const router = express.Router();
 
-// Multer Storage Setup
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -18,7 +17,6 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// Helper to extract Cloudinary public ID from URL
 const getPublicIdFromUrl = (url) => {
   if (!url) return null;
   const parts = url.split("/");
@@ -29,25 +27,23 @@ const getPublicIdFromUrl = (url) => {
 // 1. ADD SELLER GOLD (POST)
 router.post("/add", upload.array("images", 10), async (req, res) => {
   try {
-    const {
-      name,
-      category,
-      weight,
-      purity,
-      condition,
-      price,
-      description,
-      full_name,
-      mobilenumber,
-      addharcard, // Corrected from addharnumber to match database column
-      typeofselling,
-      street_no,
-      landmark,
-      state,
-      district,
-      mandal,
-      pincode,
-    } = req.body;
+    const name = req.body.name || req.body.productName || null;
+    const category = req.body.category || null;
+    const weight = req.body.weight ? parseFloat(String(req.body.weight).replace(/[^0-9.]/g, "")) : null;
+    const purity = req.body.purity || null;
+    const condition = req.body.condition || null;
+    const price = req.body.price ? parseFloat(String(req.body.price).replace(/[^0-9.]/g, "")) : null;
+    const description = req.body.description || null;
+    const full_name = req.body.full_name || req.body.fullName || null;
+    const mobilenumber = req.body.mobilenumber || req.body.phoneNumber || null;
+    const addharcard = req.body.addharcard || req.body.aadhaarNumber || req.body.document_id || req.body.docNumber || null;
+    const typeofselling = req.body.typeofselling || req.body.goldType || null;
+    const street_no = req.body.street_no || req.body.streetNo || null;
+    const landmark = req.body.landmark || null;
+    const state = req.body.state || req.body.stateName || null;
+    const district = req.body.district || null;
+    const mandal = req.body.mandal || null;
+    const pincode = req.body.pincode || null;
 
     const files = req.files || [];
     const imagePaths = files.map((file) => file.path);
@@ -56,29 +52,29 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
       `INSERT INTO sellergold (
         name, category, weight, purity, condition, price, description, 
         images, full_name, mobilenumber, addharcard, typeofselling, 
-        street_no, landmark, state, district, mandal, pincode, created_at
+        street_no, landmark, state, district, mandal, pincode, status, created_at, updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'pending', NOW(), NOW())
       RETURNING *`,
       [
-        name || null,
-        category || null,
-        weight ? parseFloat(weight) : null,
-        purity || null,
-        condition || null,
-        price ? parseFloat(price) : null,
-        description || null,
+        name,
+        category,
+        weight,
+        purity,
+        condition,
+        price,
+        description,
         imagePaths,
-        full_name || null,
-        mobilenumber || null,
-        addharcard || null,
-        typeofselling || null,
-        street_no || null,
-        landmark || null,
-        state || null,
-        district || null,
-        mandal || null,
-        pincode || null,
+        full_name,
+        mobilenumber,
+        addharcard,
+        typeofselling,
+        street_no,
+        landmark,
+        state,
+        district,
+        mandal,
+        pincode,
       ]
     );
 
@@ -111,7 +107,7 @@ router.patch("/:id/status", async (req, res) => {
 
   try {
     const result = await pool.query(
-      "UPDATE sellergold SET status = $1 WHERE id = $2 RETURNING *",
+      "UPDATE sellergold SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
       [status, id]
     );
 
@@ -177,26 +173,6 @@ router.get("/:id", async (req, res) => {
 // 5. UPDATE SELLER GOLD PRODUCT DETAILS (PUT)
 router.put("/:id", upload.array("images", 10), async (req, res) => {
   const { id } = req.params;
-  const {
-    name,
-    category,
-    weight,
-    purity,
-    condition,
-    price,
-    description,
-    full_name,
-    mobilenumber,
-    addharcard, // Corrected to match database column
-    typeofselling,
-    status,
-    street_no,
-    landmark,
-    state,
-    district,
-    mandal,
-    pincode,
-  } = req.body;
 
   try {
     const currentProductResult = await pool.query(
@@ -223,7 +199,24 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
       finalImages = req.files.map((file) => file.path);
     }
 
-    const updatedStatus = status || currentStatus;
+    const name = req.body.name || req.body.productName || null;
+    const category = req.body.category || null;
+    const weight = req.body.weight ? parseFloat(String(req.body.weight).replace(/[^0-9.]/g, "")) : null;
+    const purity = req.body.purity || null;
+    const condition = req.body.condition || null;
+    const price = req.body.price ? parseFloat(String(req.body.price).replace(/[^0-9.]/g, "")) : null;
+    const description = req.body.description || null;
+    const full_name = req.body.full_name || req.body.fullName || null;
+    const mobilenumber = req.body.mobilenumber || req.body.phoneNumber || null;
+    const addharcard = req.body.addharcard || req.body.aadhaarNumber || req.body.document_id || req.body.docNumber || null;
+    const typeofselling = req.body.typeofselling || req.body.goldType || null;
+    const updatedStatus = req.body.status || currentStatus;
+    const street_no = req.body.street_no || req.body.streetNo || null;
+    const landmark = req.body.landmark || null;
+    const state = req.body.state || req.body.stateName || null;
+    const district = req.body.district || null;
+    const mandal = req.body.mandal || null;
+    const pincode = req.body.pincode || null;
 
     const result = await pool.query(
       `UPDATE sellergold 
@@ -231,29 +224,29 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
            price = $6, description = $7, images = $8, full_name = $9, 
            mobilenumber = $10, addharcard = $11, typeofselling = $12, status = $13,
            street_no = $14, landmark = $15, state = $16, district = $17, 
-           mandal = $18, pincode = $19
+           mandal = $18, pincode = $19, updated_at = NOW()
        WHERE id = $20
        RETURNING *`,
       [
-        name || null,
-        category || null,
-        weight ? parseFloat(weight) : null,
-        purity || null,
-        condition || null,
-        price ? parseFloat(price) : null,
-        description || null,
+        name,
+        category,
+        weight,
+        purity,
+        condition,
+        price,
+        description,
         finalImages,
-        full_name || null,
-        mobilenumber || null,
-        addharcard || null,
-        typeofselling || null,
+        full_name,
+        mobilenumber,
+        addharcard,
+        typeofselling,
         updatedStatus,
-        street_no || null,
-        landmark || null,
-        state || null,
-        district || null,
-        mandal || null,
-        pincode || null,
+        street_no,
+        landmark,
+        state,
+        district,
+        mandal,
+        pincode,
         id,
       ]
     );
