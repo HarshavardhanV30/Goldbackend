@@ -56,8 +56,8 @@ const parseJsonObject = (data) => {
 // ==========================================
 
 /**
- * @route   POST /api/gold-repair
- * @desc    Create a new gold repair booking
+ * @route   POST /api/gold-repair/add
+ * @desc    Create a new gold repair booking with individual key-value columns
  * @access  Public
  */
 router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
@@ -80,6 +80,25 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
     const serviceLocation = parseJsonObject(req.body.serviceLocation);
     const pricing = parseJsonObject(req.body.pricing);
 
+    // Extract nested customer fields
+    const customerFullName = customer.fullName || null;
+    const customerPhone = customer.phone || null;
+
+    // Extract nested location fields (excluding latitude and longitude)
+    const locHouseNo = serviceLocation.houseNo || null;
+    const locStreet = serviceLocation.street || null;
+    const locArea = serviceLocation.area || null;
+    const locLandmark = serviceLocation.landmark || null;
+    const locCity = serviceLocation.city || null;
+    const locDistrict = serviceLocation.district || null;
+    const locState = serviceLocation.state || null;
+    const locPincode = serviceLocation.pincode || null;
+
+    // Extract nested pricing fields
+    const pricingServiceFee = pricing.serviceFee || 0;
+    const pricingTaxAmount = pricing.taxAmount || 0;
+    const pricingTotalAmount = pricing.totalAmount || 0;
+
     // Upload files to Cloudinary if provided
     let imageUrls = [];
     if (req.files && req.files.length > 0) {
@@ -95,8 +114,14 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
       INSERT INTO gold_repairs (
         user_id, service_id, service_name, jewellery_type, issue_description,
         jewellery_images, booking_date, start_time, end_time, service_type,
-        customer_type, customer, service_location, special_instructions, pricing
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        customer_type, customer_full_name, customer_phone,
+        house_no, street, area, landmark, city, district, state, pincode,
+        special_instructions, service_fee, tax_amount, total_amount
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+        $21, $22, $23, $24, $25
+      )
       RETURNING *;
     `;
 
@@ -112,10 +137,20 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
       endTime,
       serviceType,
       customerType,
-      JSON.stringify(customer),
-      JSON.stringify(serviceLocation),
+      customerFullName,
+      customerPhone,
+      locHouseNo,
+      locStreet,
+      locArea,
+      locLandmark,
+      locCity,
+      locDistrict,
+      locState,
+      locPincode,
       specialInstructions,
-      JSON.stringify(pricing)
+      pricingServiceFee,
+      pricingTaxAmount,
+      pricingTotalAmount
     ];
 
     const result = await pool.query(insertQuery, values);
@@ -131,7 +166,7 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
 });
 
 /**
- * @route   GET /api/gold-repair
+ * @route   GET /api/gold-repair/all
  * @desc    Get all gold repair bookings
  * @access  Public
  */
@@ -193,6 +228,10 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
 
     const existingRecord = checkResult.rows[0];
 
+    const customer = req.body.customer ? parseJsonObject(req.body.customer) : {};
+    const serviceLocation = req.body.serviceLocation ? parseJsonObject(req.body.serviceLocation) : {};
+    const pricing = req.body.pricing ? parseJsonObject(req.body.pricing) : {};
+
     const {
       userId = existingRecord.user_id,
       serviceId = existingRecord.service_id,
@@ -207,9 +246,21 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
       specialInstructions = existingRecord.special_instructions
     } = req.body;
 
-    const customer = req.body.customer ? parseJsonObject(req.body.customer) : existingRecord.customer;
-    const serviceLocation = req.body.serviceLocation ? parseJsonObject(req.body.serviceLocation) : existingRecord.service_location;
-    const pricing = req.body.pricing ? parseJsonObject(req.body.pricing) : existingRecord.pricing;
+    const customerFullName = customer.fullName !== undefined ? customer.fullName : existingRecord.customer_full_name;
+    const customerPhone = customer.phone !== undefined ? customer.phone : existingRecord.customer_phone;
+
+    const locHouseNo = serviceLocation.houseNo !== undefined ? serviceLocation.houseNo : existingRecord.house_no;
+    const locStreet = serviceLocation.street !== undefined ? serviceLocation.street : existingRecord.street;
+    const locArea = serviceLocation.area !== undefined ? serviceLocation.area : existingRecord.area;
+    const locLandmark = serviceLocation.landmark !== undefined ? serviceLocation.landmark : existingRecord.landmark;
+    const locCity = serviceLocation.city !== undefined ? serviceLocation.city : existingRecord.city;
+    const locDistrict = serviceLocation.district !== undefined ? serviceLocation.district : existingRecord.district;
+    const locState = serviceLocation.state !== undefined ? serviceLocation.state : existingRecord.state;
+    const locPincode = serviceLocation.pincode !== undefined ? serviceLocation.pincode : existingRecord.pincode;
+
+    const pricingServiceFee = pricing.serviceFee !== undefined ? pricing.serviceFee : existingRecord.service_fee;
+    const pricingTaxAmount = pricing.taxAmount !== undefined ? pricing.taxAmount : existingRecord.tax_amount;
+    const pricingTotalAmount = pricing.totalAmount !== undefined ? pricing.totalAmount : existingRecord.total_amount;
 
     // Handle uploaded images
     let imageUrls = existingRecord.jewellery_images || [];
@@ -233,12 +284,22 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
         end_time = $9,
         service_type = $10,
         customer_type = $11,
-        customer = $12,
-        service_location = $13,
-        special_instructions = $14,
-        pricing = $15,
+        customer_full_name = $12,
+        customer_phone = $13,
+        house_no = $14,
+        street = $15,
+        area = $16,
+        landmark = $17,
+        city = $18,
+        district = $19,
+        state = $20,
+        pincode = $21,
+        special_instructions = $22,
+        service_fee = $23,
+        tax_amount = $24,
+        total_amount = $25,
         updated_at = NOW()
-      WHERE id = $16
+      WHERE id = $26
       RETURNING *;
     `;
 
@@ -254,10 +315,20 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
       endTime,
       serviceType,
       customerType,
-      JSON.stringify(customer),
-      JSON.stringify(serviceLocation),
+      customerFullName,
+      customerPhone,
+      locHouseNo,
+      locStreet,
+      locArea,
+      locLandmark,
+      locCity,
+      locDistrict,
+      locState,
+      locPincode,
       specialInstructions,
-      JSON.stringify(pricing),
+      pricingServiceFee,
+      pricingTaxAmount,
+      pricingTotalAmount,
       id
     ];
 
