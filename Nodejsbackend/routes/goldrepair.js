@@ -60,7 +60,7 @@ const parseJsonObject = (data) => {
  * @desc    Create a new gold repair booking
  * @access  Public
  */
-router.post('/', upload.array('jewelleryImages', 5), async (req, res) => {
+router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
   try {
     const {
       userId,
@@ -135,7 +135,7 @@ router.post('/', upload.array('jewelleryImages', 5), async (req, res) => {
  * @desc    Get all gold repair bookings
  * @access  Public
  */
-router.get('/', async (req, res) => {
+router.get('/all', async (req, res) => {
   try {
     const selectQuery = 'SELECT * FROM gold_repairs ORDER BY created_at DESC;';
     const result = await pool.query(selectQuery);
