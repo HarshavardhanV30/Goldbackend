@@ -39,25 +39,13 @@ const getCloudinaryPublicId = (url) => {
   }
 };
 
-// Helper to safely parse JSON strings or objects
-const parseJsonObject = (data) => {
-  if (typeof data === 'string') {
-    try {
-      return JSON.parse(data);
-    } catch (e) {
-      return {};
-    }
-  }
-  return data || {};
-};
-
 // ==========================================
 // API ENDPOINTS
 // ==========================================
 
 /**
  * @route   POST /api/gold-repair/add
- * @desc    Create a new gold repair booking with individual key-value columns
+ * @desc    Create a new gold repair booking with direct flat keys
  * @access  Public
  */
 router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
@@ -73,41 +61,37 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
       endTime,
       serviceType = 'DOORSTEP',
       customerType = 'SELF',
-      specialInstructions = ''
+      customerFullName,
+      customerPhone,
+      houseNo,
+      street,
+      area,
+      landmark,
+      city,
+      district,
+      state,
+      pincode,
+      specialInstructions = '',
+      serviceFee = 0,
+      taxAmount = 0,
+      totalAmount = 0
     } = req.body;
 
-    const customer = parseJsonObject(req.body.customer);
-    const serviceLocation = parseJsonObject(req.body.serviceLocation);
-    const pricing = parseJsonObject(req.body.pricing);
-
-    // Extract nested customer fields
-    const customerFullName = customer.fullName || null;
-    const customerPhone = customer.phone || null;
-
-    // Extract nested location fields (excluding latitude and longitude)
-    const locHouseNo = serviceLocation.houseNo || null;
-    const locStreet = serviceLocation.street || null;
-    const locArea = serviceLocation.area || null;
-    const locLandmark = serviceLocation.landmark || null;
-    const locCity = serviceLocation.city || null;
-    const locDistrict = serviceLocation.district || null;
-    const locState = serviceLocation.state || null;
-    const locPincode = serviceLocation.pincode || null;
-
-    // Extract nested pricing fields
-    const pricingServiceFee = pricing.serviceFee || 0;
-    const pricingTaxAmount = pricing.taxAmount || 0;
-    const pricingTotalAmount = pricing.totalAmount || 0;
-
-    // Upload files to Cloudinary if provided
+    // Upload files to Cloudinary if provided, or read image URLs from body
     let imageUrls = [];
     if (req.files && req.files.length > 0) {
       const uploadPromises = req.files.map(file => uploadToCloudinary(file.buffer));
       imageUrls = await Promise.all(uploadPromises);
     } else if (req.body.jewelleryImages) {
-      imageUrls = Array.isArray(req.body.jewelleryImages)
-        ? req.body.jewelleryImages
-        : [req.body.jewelleryImages];
+      if (typeof req.body.jewelleryImages === 'string') {
+        try {
+          imageUrls = JSON.parse(req.body.jewelleryImages);
+        } catch (e) {
+          imageUrls = [req.body.jewelleryImages];
+        }
+      } else if (Array.isArray(req.body.jewelleryImages)) {
+        imageUrls = req.body.jewelleryImages;
+      }
     }
 
     const insertQuery = `
@@ -137,20 +121,20 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
       endTime,
       serviceType,
       customerType,
-      customerFullName,
-      customerPhone,
-      locHouseNo,
-      locStreet,
-      locArea,
-      locLandmark,
-      locCity,
-      locDistrict,
-      locState,
-      locPincode,
+      customerFullName || null,
+      customerPhone || null,
+      houseNo || null,
+      street || null,
+      area || null,
+      landmark || null,
+      city || null,
+      district || null,
+      state || null,
+      pincode || null,
       specialInstructions,
-      pricingServiceFee,
-      pricingTaxAmount,
-      pricingTotalAmount
+      serviceFee,
+      taxAmount,
+      totalAmount
     ];
 
     const result = await pool.query(insertQuery, values);
@@ -228,10 +212,6 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
 
     const existingRecord = checkResult.rows[0];
 
-    const customer = req.body.customer ? parseJsonObject(req.body.customer) : {};
-    const serviceLocation = req.body.serviceLocation ? parseJsonObject(req.body.serviceLocation) : {};
-    const pricing = req.body.pricing ? parseJsonObject(req.body.pricing) : {};
-
     const {
       userId = existingRecord.user_id,
       serviceId = existingRecord.service_id,
@@ -243,24 +223,21 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
       endTime = existingRecord.end_time,
       serviceType = existingRecord.service_type,
       customerType = existingRecord.customer_type,
-      specialInstructions = existingRecord.special_instructions
+      customerFullName = existingRecord.customer_full_name,
+      customerPhone = existingRecord.customer_phone,
+      houseNo = existingRecord.house_no,
+      street = existingRecord.street,
+      area = existingRecord.area,
+      landmark = existingRecord.landmark,
+      city = existingRecord.city,
+      district = existingRecord.district,
+      state = existingRecord.state,
+      pincode = existingRecord.pincode,
+      specialInstructions = existingRecord.special_instructions,
+      serviceFee = existingRecord.service_fee,
+      taxAmount = existingRecord.tax_amount,
+      totalAmount = existingRecord.total_amount
     } = req.body;
-
-    const customerFullName = customer.fullName !== undefined ? customer.fullName : existingRecord.customer_full_name;
-    const customerPhone = customer.phone !== undefined ? customer.phone : existingRecord.customer_phone;
-
-    const locHouseNo = serviceLocation.houseNo !== undefined ? serviceLocation.houseNo : existingRecord.house_no;
-    const locStreet = serviceLocation.street !== undefined ? serviceLocation.street : existingRecord.street;
-    const locArea = serviceLocation.area !== undefined ? serviceLocation.area : existingRecord.area;
-    const locLandmark = serviceLocation.landmark !== undefined ? serviceLocation.landmark : existingRecord.landmark;
-    const locCity = serviceLocation.city !== undefined ? serviceLocation.city : existingRecord.city;
-    const locDistrict = serviceLocation.district !== undefined ? serviceLocation.district : existingRecord.district;
-    const locState = serviceLocation.state !== undefined ? serviceLocation.state : existingRecord.state;
-    const locPincode = serviceLocation.pincode !== undefined ? serviceLocation.pincode : existingRecord.pincode;
-
-    const pricingServiceFee = pricing.serviceFee !== undefined ? pricing.serviceFee : existingRecord.service_fee;
-    const pricingTaxAmount = pricing.taxAmount !== undefined ? pricing.taxAmount : existingRecord.tax_amount;
-    const pricingTotalAmount = pricing.totalAmount !== undefined ? pricing.totalAmount : existingRecord.total_amount;
 
     // Handle uploaded images
     let imageUrls = existingRecord.jewellery_images || [];
@@ -317,18 +294,18 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
       customerType,
       customerFullName,
       customerPhone,
-      locHouseNo,
-      locStreet,
-      locArea,
-      locLandmark,
-      locCity,
-      locDistrict,
-      locState,
-      locPincode,
+      houseNo,
+      street,
+      area,
+      landmark,
+      city,
+      district,
+      state,
+      pincode,
       specialInstructions,
-      pricingServiceFee,
-      pricingTaxAmount,
-      pricingTotalAmount,
+      serviceFee,
+      taxAmount,
+      totalAmount,
       id
     ];
 
