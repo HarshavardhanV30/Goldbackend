@@ -2,29 +2,17 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-// Root directory imports (../ resolves to /app from /app/routes)
 const pool = require('../db');
 const cloudinary = require('../cloudinary');
-
-// =====================================================
-// MULTER CONFIGURATION
-// =====================================================
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10 MB per file
+    fileSize: 10 * 1024 * 1024,
     files: 5
   }
 });
 
-// =====================================================
-// HELPER FUNCTIONS
-// =====================================================
-
-/**
- * Sanitize text input
- */
 const sanitizeInput = (value, defaultValue = null) => {
   if (
     value === undefined ||
@@ -40,9 +28,6 @@ const sanitizeInput = (value, defaultValue = null) => {
   return stringValue === '' ? defaultValue : stringValue;
 };
 
-/**
- * Sanitize integer
- */
 const sanitizeInteger = (value, defaultValue = null) => {
   if (
     value === undefined ||
@@ -59,9 +44,6 @@ const sanitizeInteger = (value, defaultValue = null) => {
   return Number.isNaN(parsed) ? defaultValue : parsed;
 };
 
-/**
- * Sanitize decimal/number
- */
 const sanitizeNumber = (value, defaultValue = 0) => {
   if (
     value === undefined ||
@@ -78,9 +60,6 @@ const sanitizeNumber = (value, defaultValue = 0) => {
   return Number.isNaN(parsed) ? defaultValue : parsed;
 };
 
-/**
- * Normalize images to an array
- */
 const normalizeImages = (images) => {
   if (!images) {
     return [];
@@ -107,9 +86,6 @@ const normalizeImages = (images) => {
   return [];
 };
 
-/**
- * Upload image buffer to Cloudinary
- */
 const uploadToCloudinary = (fileBuffer) => {
   return new Promise((resolve, reject) => {
     if (!fileBuffer) {
@@ -140,9 +116,6 @@ const uploadToCloudinary = (fileBuffer) => {
   });
 };
 
-/**
- * Extract Cloudinary public ID from URL
- */
 const getCloudinaryPublicId = (url) => {
   try {
     if (!url || typeof url !== 'string') {
@@ -165,7 +138,6 @@ const getCloudinaryPublicId = (url) => {
 
     publicPath = segments.join('/');
 
-    // Remove extension
     publicPath = publicPath.replace(/\.[^/.]+$/, '');
 
     return publicPath || null;
@@ -175,9 +147,6 @@ const getCloudinaryPublicId = (url) => {
   }
 };
 
-/**
- * Delete image from Cloudinary
- */
 const deleteFromCloudinary = async (url) => {
   try {
     const publicId = getCloudinaryPublicId(url);
@@ -199,9 +168,6 @@ const deleteFromCloudinary = async (url) => {
   }
 };
 
-/**
- * Delete multiple Cloudinary images
- */
 const deleteImagesFromCloudinary = async (images) => {
   const normalizedImages = normalizeImages(images);
 
@@ -209,11 +175,6 @@ const deleteImagesFromCloudinary = async (images) => {
     await deleteFromCloudinary(imageUrl);
   }
 };
-
-// =====================================================
-// POST /goldrepair/add
-// CREATE GOLD REPAIR BOOKING
-// =====================================================
 
 router.post(
   '/add',
@@ -248,7 +209,6 @@ router.post(
         totalAmount
       } = req.body;
 
-      // Required Field Validation
       if (!serviceId) {
         return res.status(400).json({
           success: false,
@@ -291,7 +251,6 @@ router.post(
         });
       }
 
-      // Upload Images
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map((file) =>
           uploadToCloudinary(file.buffer)
@@ -302,7 +261,6 @@ router.post(
         uploadedImageUrls = normalizeImages(req.body.jewelleryImages);
       }
 
-      // Insert Record Query
       const insertQuery = `
         INSERT INTO gold_repairs (
           service_id,
@@ -380,7 +338,6 @@ router.post(
         error
       );
 
-      // Clean up uploaded Cloudinary images if DB insert fails
       if (uploadedImageUrls.length > 0) {
         await deleteImagesFromCloudinary(uploadedImageUrls);
       }
@@ -393,11 +350,6 @@ router.post(
     }
   }
 );
-
-// =====================================================
-// GET /goldrepair/all
-// GET ALL GOLD REPAIR BOOKINGS
-// =====================================================
 
 router.get('/all', async (req, res) => {
   try {
@@ -427,11 +379,6 @@ router.get('/all', async (req, res) => {
     });
   }
 });
-
-// =====================================================
-// GET /goldrepair/:id
-// GET SINGLE GOLD REPAIR BOOKING
-// =====================================================
 
 router.get('/:id', async (req, res) => {
   try {
@@ -479,11 +426,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// =====================================================
-// PUT /goldrepair/:id
-// UPDATE GOLD REPAIR BOOKING
-// =====================================================
-
 router.put(
   '/:id',
   upload.array('jewelleryImages', 5),
@@ -502,7 +444,6 @@ router.put(
         });
       }
 
-      // Check Existing Record
       const checkQuery = `
         SELECT *
         FROM gold_repairs
@@ -523,7 +464,6 @@ router.put(
 
       const existingRecord = checkResult.rows[0];
 
-      // Assign Form Values or Fall Back to Existing Values
       const serviceId =
         req.body.serviceId !== undefined
           ? req.body.serviceId
@@ -639,12 +579,10 @@ router.put(
           ? req.body.totalAmount
           : existingRecord.total_amount;
 
-      // Retain Existing Images
       let imageUrls = normalizeImages(
         existingRecord.jewellery_images
       );
 
-      // Handle New File Uploads
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map((file) =>
           uploadToCloudinary(file.buffer)
@@ -660,7 +598,6 @@ router.put(
         ];
       }
 
-      // Update Query
       const updateQuery = `
         UPDATE gold_repairs
         SET
@@ -746,7 +683,6 @@ router.put(
         error
       );
 
-      // Clean up newly uploaded images if update failed
       if (newlyUploadedImages.length > 0) {
         await deleteImagesFromCloudinary(
           newlyUploadedImages
@@ -762,11 +698,6 @@ router.put(
   }
 );
 
-// =====================================================
-// DELETE /goldrepair/:id
-// DELETE GOLD REPAIR BOOKING
-// =====================================================
-
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -780,7 +711,6 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    // Check Existing Record
     const selectQuery = `
       SELECT *
       FROM gold_repairs
@@ -801,7 +731,6 @@ router.delete('/:id', async (req, res) => {
 
     const record = checkResult.rows[0];
 
-    // Delete Record from Database
     const deleteQuery = `
       DELETE FROM gold_repairs
       WHERE id = $1
@@ -813,7 +742,6 @@ router.delete('/:id', async (req, res) => {
       [repairId]
     );
 
-    // Delete Images from Cloudinary
     const images = normalizeImages(
       record.jewellery_images
     );
@@ -841,9 +769,5 @@ router.delete('/:id', async (req, res) => {
     });
   }
 });
-
-// =====================================================
-// EXPORT ROUTER
-// =====================================================
 
 module.exports = router;
