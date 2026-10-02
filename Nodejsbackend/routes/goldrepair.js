@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
+// Root directory imports (../ resolves to /app from /app/routes)
 const pool = require('../db');
 const cloudinary = require('../cloudinary');
 
@@ -141,12 +142,6 @@ const uploadToCloudinary = (fileBuffer) => {
 
 /**
  * Extract Cloudinary public ID from URL
- *
- * Example:
- * https://res.cloudinary.com/demo/image/upload/v12345/gold_repairs/abc.jpg
- *
- * Returns:
- * gold_repairs/abc
  */
 const getCloudinaryPublicId = (url) => {
   try {
@@ -162,7 +157,6 @@ const getCloudinaryPublicId = (url) => {
 
     let publicPath = url.substring(uploadIndex + '/upload/'.length);
 
-    // Remove transformation/version segments when present
     const segments = publicPath.split('/');
 
     if (segments[0].startsWith('v') && /^v\d+$/.test(segments[0])) {
@@ -254,10 +248,7 @@ router.post(
         totalAmount
       } = req.body;
 
-      // -----------------------------------------------
-      // REQUIRED FIELD VALIDATION
-      // -----------------------------------------------
-
+      // Required Field Validation
       if (!serviceId) {
         return res.status(400).json({
           success: false,
@@ -300,10 +291,7 @@ router.post(
         });
       }
 
-      // -----------------------------------------------
-      // UPLOAD IMAGES
-      // -----------------------------------------------
-
+      // Upload Images
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map((file) =>
           uploadToCloudinary(file.buffer)
@@ -314,10 +302,7 @@ router.post(
         uploadedImageUrls = normalizeImages(req.body.jewelleryImages);
       }
 
-      // -----------------------------------------------
-      // SQL
-      // -----------------------------------------------
-
+      // Insert Record Query
       const insertQuery = `
         INSERT INTO gold_repairs (
           service_id,
@@ -395,7 +380,7 @@ router.post(
         error
       );
 
-      // Delete uploaded Cloudinary images if DB insert failed
+      // Clean up uploaded Cloudinary images if DB insert fails
       if (uploadedImageUrls.length > 0) {
         await deleteImagesFromCloudinary(uploadedImageUrls);
       }
@@ -517,10 +502,7 @@ router.put(
         });
       }
 
-      // -----------------------------------------------
-      // GET EXISTING RECORD
-      // -----------------------------------------------
-
+      // Check Existing Record
       const checkQuery = `
         SELECT *
         FROM gold_repairs
@@ -541,10 +523,7 @@ router.put(
 
       const existingRecord = checkResult.rows[0];
 
-      // -----------------------------------------------
-      // EXISTING VALUES
-      // -----------------------------------------------
-
+      // Assign Form Values or Fall Back to Existing Values
       const serviceId =
         req.body.serviceId !== undefined
           ? req.body.serviceId
@@ -660,18 +639,12 @@ router.put(
           ? req.body.totalAmount
           : existingRecord.total_amount;
 
-      // -----------------------------------------------
-      // EXISTING IMAGES
-      // -----------------------------------------------
-
+      // Retain Existing Images
       let imageUrls = normalizeImages(
         existingRecord.jewellery_images
       );
 
-      // -----------------------------------------------
-      // NEW IMAGE UPLOADS
-      // -----------------------------------------------
-
+      // Handle New File Uploads
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map((file) =>
           uploadToCloudinary(file.buffer)
@@ -687,10 +660,7 @@ router.put(
         ];
       }
 
-      // -----------------------------------------------
-      // UPDATE QUERY
-      // -----------------------------------------------
-
+      // Update Query
       const updateQuery = `
         UPDATE gold_repairs
         SET
@@ -810,10 +780,7 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    // -----------------------------------------------
-    // GET RECORD
-    // -----------------------------------------------
-
+    // Check Existing Record
     const selectQuery = `
       SELECT *
       FROM gold_repairs
@@ -834,10 +801,7 @@ router.delete('/:id', async (req, res) => {
 
     const record = checkResult.rows[0];
 
-    // -----------------------------------------------
-    // DELETE DATABASE RECORD FIRST
-    // -----------------------------------------------
-
+    // Delete Record from Database
     const deleteQuery = `
       DELETE FROM gold_repairs
       WHERE id = $1
@@ -849,10 +813,7 @@ router.delete('/:id', async (req, res) => {
       [repairId]
     );
 
-    // -----------------------------------------------
-    // DELETE CLOUDINARY IMAGES
-    // -----------------------------------------------
-
+    // Delete Images from Cloudinary
     const images = normalizeImages(
       record.jewellery_images
     );
