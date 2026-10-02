@@ -1,12 +1,14 @@
 /**
- * goldrepair.js
+ * routes/goldrepair.js
  */
 
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const pool = require('./db');
-const cloudinary = require('./cloudinary');
+
+// Updated relative imports pointing to root project directory
+const pool = require('../db');
+const cloudinary = require('../cloudinary');
 
 // Multer in-memory storage (max 10MB per image)
 const upload = multer({
