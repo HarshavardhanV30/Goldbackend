@@ -61,12 +61,12 @@ router.post("/add", upload.single("repairimage"), async (req, res) => {
   try {
     const numericPrice = price !== undefined && price !== null ? parseFloat(price) : null;
 
-    // INSERT query handling fields safely
+    // INSERT query handling fields safely including jewellery_type
     const result = await pool.query(
-      `INSERT INTO gold_repairs (title, description, price, repairimage) 
-       VALUES ($1, $2, $3, $4) 
+      `INSERT INTO gold_repairs (title, description, price, jewellery_type, repairimage) 
+       VALUES ($1, $2, $3, $4, $5) 
        RETURNING *`,
-      [title, description || null, numericPrice, imageUrl]
+      [title, description || null, numericPrice, jewellery_type || null, imageUrl]
     );
 
     return res.status(201).json({
@@ -147,7 +147,7 @@ router.put(
   upload.single("repairimage"),
   async (req, res) => {
     const { updateid } = req.params;
-    const { title, description, price, repairimage } = req.body;
+    const { title, description, price, jewellery_type, repairimage } = req.body;
 
     try {
       const checkResult = await pool.query(
@@ -167,6 +167,8 @@ router.put(
       const finalDescription =
         description !== undefined ? description : currentRecord.description;
       const finalPrice = price !== undefined ? parseFloat(price) : currentRecord.price;
+      const finalJewelleryType =
+        jewellery_type !== undefined ? jewellery_type : currentRecord.jewellery_type;
       let finalImageUrl = currentRecord.repairimage;
 
       if (req.file) {
@@ -189,10 +191,10 @@ router.put(
 
       const updateResult = await pool.query(
         `UPDATE gold_repairs 
-         SET title = $1, description = $2, price = $3, repairimage = $4 
-         WHERE id = $5 
+         SET title = $1, description = $2, price = $3, jewellery_type = $4, repairimage = $5 
+         WHERE id = $6 
          RETURNING *`,
-        [finalTitle, finalDescription, finalPrice, finalImageUrl, updateid]
+        [finalTitle, finalDescription, finalPrice, finalJewelleryType, finalImageUrl, updateid]
       );
 
       return res.status(200).json({
