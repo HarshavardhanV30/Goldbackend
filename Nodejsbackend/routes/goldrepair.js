@@ -45,13 +45,12 @@ const getCloudinaryPublicId = (url) => {
 
 /**
  * @route   POST /api/gold-repair/add
- * @desc    Create a new gold repair booking with direct flat keys
+ * @desc    Create a new gold repair booking
  * @access  Public
  */
 router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
   try {
     const {
-      userId,
       serviceId,
       serviceName,
       jewelleryType,
@@ -61,8 +60,8 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
       endTime,
       serviceType = 'DOORSTEP',
       customerType = 'SELF',
-      customerFullName,
-      customerPhone,
+      fullName,
+      phone,
       houseNo,
       street,
       area,
@@ -96,21 +95,20 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
 
     const insertQuery = `
       INSERT INTO gold_repairs (
-        user_id, service_id, service_name, jewellery_type, issue_description,
+        service_id, service_name, jewellery_type, issue_description,
         jewellery_images, booking_date, start_time, end_time, service_type,
-        customer_type, customer_full_name, customer_phone,
-        house_no, street, area, landmark, city, district, state, pincode,
+        customer_type, full_name, phone, house_no, street, area, 
+        landmark, city, district, state, pincode,
         special_instructions, service_fee, tax_amount, total_amount
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25
+        $21, $22, $23, $24
       )
       RETURNING *;
     `;
 
     const values = [
-      userId,
       serviceId,
       serviceName,
       jewelleryType,
@@ -121,8 +119,8 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
       endTime,
       serviceType,
       customerType,
-      customerFullName || null,
-      customerPhone || null,
+      fullName || null,
+      phone || null,
       houseNo || null,
       street || null,
       area || null,
@@ -213,7 +211,6 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
     const existingRecord = checkResult.rows[0];
 
     const {
-      userId = existingRecord.user_id,
       serviceId = existingRecord.service_id,
       serviceName = existingRecord.service_name,
       jewelleryType = existingRecord.jewellery_type,
@@ -223,8 +220,8 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
       endTime = existingRecord.end_time,
       serviceType = existingRecord.service_type,
       customerType = existingRecord.customer_type,
-      customerFullName = existingRecord.customer_full_name,
-      customerPhone = existingRecord.customer_phone,
+      fullName = existingRecord.full_name,
+      phone = existingRecord.phone,
       houseNo = existingRecord.house_no,
       street = existingRecord.street,
       area = existingRecord.area,
@@ -250,38 +247,36 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
     const updateQuery = `
       UPDATE gold_repairs
       SET 
-        user_id = $1,
-        service_id = $2,
-        service_name = $3,
-        jewellery_type = $4,
-        issue_description = $5,
-        jewellery_images = $6,
-        booking_date = $7,
-        start_time = $8,
-        end_time = $9,
-        service_type = $10,
-        customer_type = $11,
-        customer_full_name = $12,
-        customer_phone = $13,
-        house_no = $14,
-        street = $15,
-        area = $16,
-        landmark = $17,
-        city = $18,
-        district = $19,
-        state = $20,
-        pincode = $21,
-        special_instructions = $22,
-        service_fee = $23,
-        tax_amount = $24,
-        total_amount = $25,
+        service_id = $1,
+        service_name = $2,
+        jewellery_type = $3,
+        issue_description = $4,
+        jewellery_images = $5,
+        booking_date = $6,
+        start_time = $7,
+        end_time = $8,
+        service_type = $9,
+        customer_type = $10,
+        full_name = $11,
+        phone = $12,
+        house_no = $13,
+        street = $14,
+        area = $15,
+        landmark = $16,
+        city = $17,
+        district = $18,
+        state = $19,
+        pincode = $20,
+        special_instructions = $21,
+        service_fee = $22,
+        tax_amount = $23,
+        total_amount = $24,
         updated_at = NOW()
-      WHERE id = $26
+      WHERE id = $25
       RETURNING *;
     `;
 
     const values = [
-      userId,
       serviceId,
       serviceName,
       jewelleryType,
@@ -292,8 +287,8 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
       endTime,
       serviceType,
       customerType,
-      customerFullName,
-      customerPhone,
+      fullName,
+      phone,
       houseNo,
       street,
       area,
