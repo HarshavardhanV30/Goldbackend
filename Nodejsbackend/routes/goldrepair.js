@@ -1,10 +1,3 @@
-/**
- * goldrepair.js
- * 
- * Required NPM packages:
- * npm install express pg multer cloudinary dotenv
- */
-
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -12,7 +5,10 @@ const pool = require('./db'); // Imports your pg pool connection
 const cloudinary = require('./cloudinary'); // Imports your configured Cloudinary instance
 
 // Configured multer memory storage for direct Cloudinary stream upload
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10 MB limit
+});
 
 // Helper function to stream buffer upload to Cloudinary
 const uploadToCloudinary = (fileBuffer) => {
@@ -31,12 +27,32 @@ const uploadToCloudinary = (fileBuffer) => {
 // Helper function to extract Cloudinary public ID from URL for deletion
 const getCloudinaryPublicId = (url) => {
   try {
+    if (!url) return null;
+    // URL format: https://res.cloudinary.com/<cloud_name>/image/upload/v1234567/gold_repairs/sample.jpg
     const parts = url.split('/');
-    const folderAndFileName = parts.slice(-2).join('/');
-    return folderAndFileName.split('.')[0];
+    const folder = parts[parts.length - 2];
+    const fileNameWithExt = parts[parts.length - 1];
+    const fileName = fileNameWithExt.split('.')[0];
+    return `${folder}/${fileName}`; // Output: gold_repairs/sample
   } catch (err) {
     return null;
   }
+};
+
+// Helper function to sanitize text input from form-data
+const sanitizeInput = (val) => {
+  if (val === undefined || val === null || val === 'null' || val === 'undefined') {
+    return null;
+  }
+  const strVal = String(val).trim();
+  return strVal === '' ? null : strVal;
+};
+
+// Helper function to sanitize numeric input from form-data
+const sanitizeNumber = (val, defaultValue = 0) => {
+  if (val === undefined || val === null || val === '') return defaultValue;
+  const parsed = parseFloat(val);
+  return isNaN(parsed) ? defaultValue : parsed;
 };
 
 // ==========================================
@@ -44,7 +60,7 @@ const getCloudinaryPublicId = (url) => {
 // ==========================================
 
 /**
- * @route   POST /api/gold-repair/add
+ * @route   POST /goldrepair/add
  * @desc    Create a new gold repair booking
  * @access  Public
  */
@@ -71,12 +87,12 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
       state,
       pincode,
       specialInstructions = '',
-      serviceFee = 0,
-      taxAmount = 0,
-      totalAmount = 0
+      serviceFee,
+      taxAmount,
+      totalAmount
     } = req.body;
 
-    // Upload files to Cloudinary if provided, or read image URLs from body
+    // Process uploaded images from Multer or fallback to URL inputs
     let imageUrls = [];
     if (req.files && req.files.length > 0) {
       const uploadPromises = req.files.map(file => uploadToCloudinary(file.buffer));
@@ -109,30 +125,30 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
     `;
 
     const values = [
-      serviceId,
-      serviceName,
-      jewelleryType,
-      issueDescription,
+      sanitizeInput(serviceId),
+      sanitizeInput(serviceName),
+      sanitizeInput(jewelleryType),
+      sanitizeInput(issueDescription),
       imageUrls,
-      bookingDate,
-      startTime,
-      endTime,
-      serviceType,
-      customerType,
-      fullName || null,
-      phone || null,
-      houseNo || null,
-      street || null,
-      area || null,
-      landmark || null,
-      city || null,
-      district || null,
-      state || null,
-      pincode || null,
-      specialInstructions,
-      serviceFee,
-      taxAmount,
-      totalAmount
+      sanitizeInput(bookingDate),
+      sanitizeInput(startTime),
+      sanitizeInput(endTime),
+      sanitizeInput(serviceType) || 'DOORSTEP',
+      sanitizeInput(customerType) || 'SELF',
+      sanitizeInput(fullName),
+      sanitizeInput(phone),
+      sanitizeInput(houseNo),
+      sanitizeInput(street),
+      sanitizeInput(area),
+      sanitizeInput(landmark),
+      sanitizeInput(city),
+      sanitizeInput(district),
+      sanitizeInput(state),
+      sanitizeInput(pincode),
+      sanitizeInput(specialInstructions) || '',
+      sanitizeNumber(serviceFee, 0),
+      sanitizeNumber(taxAmount, 0),
+      sanitizeNumber(totalAmount, 0)
     ];
 
     const result = await pool.query(insertQuery, values);
@@ -143,12 +159,13 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
       data: result.rows[0]
     });
   } catch (error) {
+    console.error('Error in POST /goldrepair/add:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
- * @route   GET /api/gold-repair/all
+ * @route   GET /goldrepair/all
  * @desc    Get all gold repair bookings
  * @access  Public
  */
@@ -163,12 +180,13 @@ router.get('/all', async (req, res) => {
       data: result.rows
     });
   } catch (error) {
+    console.error('Error in GET /goldrepair/all:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
- * @route   GET /api/gold-repair/:id
+ * @route   GET /goldrepair/:id
  * @desc    Get gold repair booking by ID
  * @access  Public
  */
@@ -187,12 +205,13 @@ router.get('/:id', async (req, res) => {
       data: result.rows[0]
     });
   } catch (error) {
+    console.error(`Error in GET /goldrepair/${req.params.id}:`, error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
- * @route   PUT /api/gold-repair/:id
+ * @route   PUT /goldrepair/:id
  * @desc    Update gold repair booking by ID
  * @access  Public
  */
@@ -277,30 +296,30 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
     `;
 
     const values = [
-      serviceId,
-      serviceName,
-      jewelleryType,
-      issueDescription,
+      sanitizeInput(serviceId),
+      sanitizeInput(serviceName),
+      sanitizeInput(jewelleryType),
+      sanitizeInput(issueDescription),
       imageUrls,
-      bookingDate,
-      startTime,
-      endTime,
-      serviceType,
-      customerType,
-      fullName,
-      phone,
-      houseNo,
-      street,
-      area,
-      landmark,
-      city,
-      district,
-      state,
-      pincode,
-      specialInstructions,
-      serviceFee,
-      taxAmount,
-      totalAmount,
+      sanitizeInput(bookingDate),
+      sanitizeInput(startTime),
+      sanitizeInput(endTime),
+      sanitizeInput(serviceType),
+      sanitizeInput(customerType),
+      sanitizeInput(fullName),
+      sanitizeInput(phone),
+      sanitizeInput(houseNo),
+      sanitizeInput(street),
+      sanitizeInput(area),
+      sanitizeInput(landmark),
+      sanitizeInput(city),
+      sanitizeInput(district),
+      sanitizeInput(state),
+      sanitizeInput(pincode),
+      sanitizeInput(specialInstructions),
+      sanitizeNumber(serviceFee, existingRecord.service_fee),
+      sanitizeNumber(taxAmount, existingRecord.tax_amount),
+      sanitizeNumber(totalAmount, existingRecord.total_amount),
       id
     ];
 
@@ -312,12 +331,13 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
       data: result.rows[0]
     });
   } catch (error) {
+    console.error(`Error in PUT /goldrepair/${req.params.id}:`, error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
- * @route   DELETE /api/gold-repair/:id
+ * @route   DELETE /goldrepair/:id
  * @desc    Delete gold repair booking by ID (removes Cloudinary images)
  * @access  Public
  */
@@ -339,7 +359,11 @@ router.delete('/:id', async (req, res) => {
       for (const imgUrl of record.jewellery_images) {
         const publicId = getCloudinaryPublicId(imgUrl);
         if (publicId) {
-          await cloudinary.uploader.destroy(publicId);
+          try {
+            await cloudinary.uploader.destroy(publicId);
+          } catch (cloudErr) {
+            console.error(`Failed to delete Cloudinary asset (${publicId}):`, cloudErr.message);
+          }
         }
       }
     }
@@ -352,6 +376,7 @@ router.delete('/:id', async (req, res) => {
       message: 'Gold repair booking and associated images deleted successfully'
     });
   } catch (error) {
+    console.error(`Error in DELETE /goldrepair/${req.params.id}:`, error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
