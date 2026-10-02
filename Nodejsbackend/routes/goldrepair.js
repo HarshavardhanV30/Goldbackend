@@ -18,6 +18,7 @@ const storage = new CloudinaryStorage({
   },
 });
 
+// Configure Multer for single/multiple image uploads (fieldName: jewelleryImages)
 const upload = multer({ storage });
 
 // ==========================================
@@ -36,56 +37,139 @@ const getPublicIdFromUrl = (url) => {
 
 /**
  * @route   POST /gold-repairs/add
- * @desc    Create a new gold repair service
+ * @desc    Create a new gold repair booking service
  */
-router.post("/add", upload.single("repairimage"), async (req, res) => {
-  const { title, description, price, jewellery_type, repairimage } = req.body;
+router.post(
+  "/add",
+  upload.single("jewelleryImages"),
+  async (req, res) => {
+    const {
+      serviceId,
+      serviceName,
+      jewelleryType,
+      issueDescription,
+      bookingDate,
+      startTime,
+      endTime,
+      serviceType,
+      customerType,
+      fullName,
+      phone,
+      houseNo,
+      street,
+      area,
+      landmark,
+      city,
+      district,
+      state,
+      pincode,
+      specialInstructions,
+      serviceFee,
+      taxAmount,
+      totalAmount,
+      jewelleryImages, // JSON string or URL if passed in body
+    } = req.body;
 
-  if (!title) {
-    return res.status(400).json({
-      success: false,
-      error: "Title field is required",
-    });
+    // Basic required field check
+    if (!serviceName || !fullName || !phone) {
+      return res.status(400).json({
+        success: false,
+        error: "serviceName, fullName, and phone fields are required",
+      });
+    }
+
+    // Determine image URL from file upload or body payload
+    let imageUrl = req.file ? req.file.path : jewelleryImages;
+
+    try {
+      const numericServiceFee =
+        serviceFee !== undefined && serviceFee !== null ? parseFloat(serviceFee) : 0;
+      const numericTaxAmount =
+        taxAmount !== undefined && taxAmount !== null ? parseFloat(taxAmount) : 0;
+      const numericTotalAmount =
+        totalAmount !== undefined && totalAmount !== null ? parseFloat(totalAmount) : 0;
+
+      const query = `
+        INSERT INTO gold_repairs (
+          service_id,
+          service_name,
+          jewellery_type,
+          issue_description,
+          booking_date,
+          start_time,
+          end_time,
+          service_type,
+          customer_type,
+          full_name,
+          phone,
+          house_no,
+          street,
+          area,
+          landmark,
+          city,
+          district,
+          state,
+          pincode,
+          special_instructions,
+          service_fee,
+          tax_amount,
+          total_amount,
+          jewellery_images
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+          $21, $22, $23, $24
+        )
+        RETURNING *;
+      `;
+
+      const values = [
+        serviceId || null,
+        serviceName,
+        jewelleryType || null,
+        issueDescription || null,
+        bookingDate || null,
+        startTime || null,
+        endTime || null,
+        serviceType || null,
+        customerType || null,
+        fullName,
+        phone,
+        houseNo || null,
+        street || null,
+        area || null,
+        landmark || null,
+        city || null,
+        district || null,
+        state || null,
+        pincode || null,
+        specialInstructions || null,
+        numericServiceFee,
+        numericTaxAmount,
+        numericTotalAmount,
+        imageUrl || null,
+      ];
+
+      const result = await pool.query(query, values);
+
+      return res.status(201).json({
+        success: true,
+        message: "Gold repair booking created successfully",
+        data: result.rows[0],
+      });
+    } catch (err) {
+      console.error("Error creating gold repair booking:", err.message);
+      return res.status(500).json({
+        success: false,
+        error: err.message || "Failed to create gold repair booking",
+      });
+    }
   }
-
-  // Determine image URL from file upload or JSON body
-  let imageUrl = req.file ? req.file.path : repairimage;
-
-  if (!imageUrl) {
-    return res.status(400).json({
-      success: false,
-      error: "Repair image file or URL is required",
-    });
-  }
-
-  try {
-    const numericPrice = price !== undefined && price !== null ? parseFloat(price) : null;
-
-    // INSERT query handling fields safely including jewellery_type
-    const result = await pool.query(
-      `INSERT INTO gold_repairs (title, description, price, jewellery_type, repairimage) 
-       VALUES ($1, $2, $3, $4, $5) 
-       RETURNING *`,
-      [title, description || null, numericPrice, jewellery_type || null, imageUrl]
-    );
-
-    return res.status(201).json({
-      success: true,
-      message: "Gold repair service created successfully",
-      data: result.rows[0],
-    });
-  } catch (err) {
-    console.error("Error creating gold repair service:", err.message);
-    return res.status(500).json({
-      success: false,
-      error: err.message || "Failed to add gold repair service",
-    });
-  }
-});
+);
 
 /**
  * @route   GET /gold-repairs/repairall
- * @desc    Get all gold repair services
+ * @desc    Get all gold repair bookings
  */
 router.get("/repairall", async (req, res) => {
   try {
@@ -98,17 +182,17 @@ router.get("/repairall", async (req, res) => {
       data: result.rows,
     });
   } catch (err) {
-    console.error("Error fetching gold repair services:", err.message);
+    console.error("Error fetching gold repair bookings:", err.message);
     return res.status(500).json({
       success: false,
-      error: "Failed to fetch gold repair services",
+      error: "Failed to fetch gold repair bookings",
     });
   }
 });
 
 /**
  * @route   GET /gold-repairs/:id
- * @desc    Get a single gold repair service by ID
+ * @desc    Get a single gold repair booking by ID
  */
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
@@ -121,7 +205,7 @@ router.get("/:id", async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        error: "Gold repair service not found",
+        error: "Gold repair booking not found",
       });
     }
 
@@ -130,24 +214,24 @@ router.get("/:id", async (req, res) => {
       data: result.rows[0],
     });
   } catch (err) {
-    console.error("Error fetching gold repair service:", err.message);
+    console.error("Error fetching gold repair booking:", err.message);
     return res.status(500).json({
       success: false,
-      error: "Failed to fetch gold repair service",
+      error: "Failed to fetch gold repair booking",
     });
   }
 });
 
 /**
  * @route   PUT /gold-repairs/update/:updateid
- * @desc    Update a gold repair service
+ * @desc    Update a gold repair booking
  */
 router.put(
   "/update/:updateid",
-  upload.single("repairimage"),
+  upload.single("jewelleryImages"),
   async (req, res) => {
     const { updateid } = req.params;
-    const { title, description, price, jewellery_type, repairimage } = req.body;
+    const body = req.body;
 
     try {
       const checkResult = await pool.query(
@@ -158,24 +242,17 @@ router.put(
       if (checkResult.rows.length === 0) {
         return res.status(404).json({
           success: false,
-          error: "Gold repair service not found",
+          error: "Gold repair booking not found",
         });
       }
 
-      const currentRecord = checkResult.rows[0];
-      const finalTitle = title !== undefined ? title : currentRecord.title;
-      const finalDescription =
-        description !== undefined ? description : currentRecord.description;
-      const finalPrice = price !== undefined ? parseFloat(price) : currentRecord.price;
-      const finalJewelleryType =
-        jewellery_type !== undefined ? jewellery_type : currentRecord.jewellery_type;
-      let finalImageUrl = currentRecord.repairimage;
+      const curr = checkResult.rows[0];
+      let finalImageUrl = curr.jewellery_images;
 
       if (req.file) {
         finalImageUrl = req.file.path;
-
         try {
-          const oldPublicId = getPublicIdFromUrl(currentRecord.repairimage);
+          const oldPublicId = getPublicIdFromUrl(curr.jewellery_images);
           if (oldPublicId) {
             await cloudinary.uploader.destroy(oldPublicId);
           }
@@ -185,28 +262,80 @@ router.put(
             cloudinaryErr.message
           );
         }
-      } else if (repairimage) {
-        finalImageUrl = repairimage;
+      } else if (body.jewelleryImages) {
+        finalImageUrl = body.jewelleryImages;
       }
 
-      const updateResult = await pool.query(
-        `UPDATE gold_repairs 
-         SET title = $1, description = $2, price = $3, jewellery_type = $4, repairimage = $5 
-         WHERE id = $6 
-         RETURNING *`,
-        [finalTitle, finalDescription, finalPrice, finalJewelleryType, finalImageUrl, updateid]
-      );
+      const query = `
+        UPDATE gold_repairs SET
+          service_id = $1,
+          service_name = $2,
+          jewellery_type = $3,
+          issue_description = $4,
+          booking_date = $5,
+          start_time = $6,
+          end_time = $7,
+          service_type = $8,
+          customer_type = $9,
+          full_name = $10,
+          phone = $11,
+          house_no = $12,
+          street = $13,
+          area = $14,
+          landmark = $15,
+          city = $16,
+          district = $17,
+          state = $18,
+          pincode = $19,
+          special_instructions = $20,
+          service_fee = $21,
+          tax_amount = $22,
+          total_amount = $23,
+          jewellery_images = $24
+        WHERE id = $25
+        RETURNING *;
+      `;
+
+      const values = [
+        body.serviceId !== undefined ? body.serviceId : curr.service_id,
+        body.serviceName !== undefined ? body.serviceName : curr.service_name,
+        body.jewelleryType !== undefined ? body.jewelleryType : curr.jewellery_type,
+        body.issueDescription !== undefined ? body.issueDescription : curr.issue_description,
+        body.bookingDate !== undefined ? body.bookingDate : curr.booking_date,
+        body.startTime !== undefined ? body.startTime : curr.start_time,
+        body.endTime !== undefined ? body.endTime : curr.end_time,
+        body.serviceType !== undefined ? body.serviceType : curr.service_type,
+        body.customerType !== undefined ? body.customerType : curr.customer_type,
+        body.fullName !== undefined ? body.fullName : curr.full_name,
+        body.phone !== undefined ? body.phone : curr.phone,
+        body.houseNo !== undefined ? body.houseNo : curr.house_no,
+        body.street !== undefined ? body.street : curr.street,
+        body.area !== undefined ? body.area : curr.area,
+        body.landmark !== undefined ? body.landmark : curr.landmark,
+        body.city !== undefined ? body.city : curr.city,
+        body.district !== undefined ? body.district : curr.district,
+        body.state !== undefined ? body.state : curr.state,
+        body.pincode !== undefined ? body.pincode : curr.pincode,
+        body.specialInstructions !== undefined ? body.specialInstructions : curr.special_instructions,
+        body.serviceFee !== undefined ? parseFloat(body.serviceFee) : curr.service_fee,
+        body.taxAmount !== undefined ? parseFloat(body.taxAmount) : curr.tax_amount,
+        body.totalAmount !== undefined ? parseFloat(body.totalAmount) : curr.total_amount,
+        finalImageUrl,
+        updateid,
+      ];
+
+      const updateResult = await pool.query(query, values);
 
       return res.status(200).json({
         success: true,
-        message: "Gold repair service updated successfully",
+        message: "Gold repair booking updated successfully",
         data: updateResult.rows[0],
       });
     } catch (err) {
-      console.error("Error updating gold repair service:", err.message);
+      console.error("Error updating gold repair booking:", err.message);
       return res.status(500).json({
         success: false,
-        error: "Failed to update gold repair service",
+        error: "Failed to update gold repair booking",
       });
     }
   }
@@ -221,18 +350,18 @@ router.delete("/:id", async (req, res) => {
 
   try {
     const checkResult = await pool.query(
-      "SELECT repairimage FROM gold_repairs WHERE id = $1",
+      "SELECT jewellery_images FROM gold_repairs WHERE id = $1",
       [id]
     );
 
     if (checkResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        error: "Gold repair service not found",
+        error: "Gold repair booking not found",
       });
     }
 
-    const imageUrl = checkResult.rows[0].repairimage;
+    const imageUrl = checkResult.rows[0].jewellery_images;
 
     try {
       const publicId = getPublicIdFromUrl(imageUrl);
@@ -250,13 +379,13 @@ router.delete("/:id", async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Gold repair service deleted successfully",
+      message: "Gold repair booking deleted successfully",
     });
   } catch (err) {
-    console.error("Error deleting gold repair service:", err.message);
+    console.error("Error deleting gold repair booking:", err.message);
     return res.status(500).json({
       success: false,
-      error: "Failed to delete gold repair service",
+      error: "Failed to delete gold repair booking",
     });
   }
 });
