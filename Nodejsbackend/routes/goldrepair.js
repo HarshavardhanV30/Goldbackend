@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const pool = require('./db'); // Imports your pg pool connection
-const cloudinary = require('./cloudinary'); // Imports your configured Cloudinary instance
+const pool = require('../db'); // Updated path from ./db to ../db
+const cloudinary = require('../cloudinary'); // Updated path from ./cloudinary to ../cloudinary
 
 // Configured multer memory storage for direct Cloudinary stream upload
 const upload = multer({
@@ -28,12 +28,11 @@ const uploadToCloudinary = (fileBuffer) => {
 const getCloudinaryPublicId = (url) => {
   try {
     if (!url) return null;
-    // URL format: https://res.cloudinary.com/<cloud_name>/image/upload/v1234567/gold_repairs/sample.jpg
     const parts = url.split('/');
     const folder = parts[parts.length - 2];
     const fileNameWithExt = parts[parts.length - 1];
     const fileName = fileNameWithExt.split('.')[0];
-    return `${folder}/${fileName}`; // Output: gold_repairs/sample
+    return `${folder}/${fileName}`;
   } catch (err) {
     return null;
   }
@@ -92,7 +91,6 @@ router.post('/add', upload.array('jewelleryImages', 5), async (req, res) => {
       totalAmount
     } = req.body;
 
-    // Process uploaded images from Multer or fallback to URL inputs
     let imageUrls = [];
     if (req.files && req.files.length > 0) {
       const uploadPromises = req.files.map(file => uploadToCloudinary(file.buffer));
@@ -219,7 +217,6 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Fetch existing record first
     const checkQuery = 'SELECT * FROM gold_repairs WHERE id = $1;';
     const checkResult = await pool.query(checkQuery, [id]);
 
@@ -255,7 +252,6 @@ router.put('/:id', upload.array('jewelleryImages', 5), async (req, res) => {
       totalAmount = existingRecord.total_amount
     } = req.body;
 
-    // Handle uploaded images
     let imageUrls = existingRecord.jewellery_images || [];
     if (req.files && req.files.length > 0) {
       const uploadPromises = req.files.map(file => uploadToCloudinary(file.buffer));
@@ -354,7 +350,6 @@ router.delete('/:id', async (req, res) => {
 
     const record = checkResult.rows[0];
 
-    // Remove associated images from Cloudinary
     if (record.jewellery_images && record.jewellery_images.length > 0) {
       for (const imgUrl of record.jewellery_images) {
         const publicId = getCloudinaryPublicId(imgUrl);
