@@ -1,3 +1,4 @@
+
 const express = require("express");
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
@@ -13,13 +14,44 @@ const storage = new CloudinaryStorage({
   cloudinary,
   params: {
     folder: "gold_repairs",
-    allowed_formats: ["jpg", "png", "jpeg", "webp", "gif"],
-    public_id: (req, file) => Date.now() + "-" + file.originalname,
+    resource_type: "image",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "gif"],
+    public_id: (req, file) => `gold-repair-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
   },
 });
 
-// Configure Multer for multiple image uploads (Max 10 files)
-const upload = multer({ storage });
+// Accept up to 10 images, maximum 8 MB per file.
+const upload = multer({
+  storage,
+  limits: { fileSize: 8 * 1024 * 1024, files: 10 },
+  fileFilter: (req, file, cb) => {
+    if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.mimetype)) {
+      return cb(new Error(`Unsupported image type: ${file.mimetype}`));
+    }
+    cb(null, true);
+  },
+});
+
+// Report Multer/Cloudinary errors rather than silently skipping uploaded files.
+const uploadJewelleryImages = (req, res, next) => {
+  upload.array("jewelleryImages", 10)(req, res, (err) => {
+    if (err) {
+      console.error("Cloudinary image upload failed:", err);
+      return res.status(400).json({
+        success: false,
+        message: "Image upload to Cloudinary failed",
+        error: err.message || "Unknown upload error",
+      });
+    }
+    console.log("Gold repair uploaded files:", (req.files || []).map((file) => ({
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      url: file.path,
+      publicId: file.filename,
+    })));
+    next();
+  });
+};
 
 // ==========================================
 // HELPER FUNCTION FOR CLOUDINARY CLEANUP
@@ -68,7 +100,7 @@ const parseBodyImages = (input) => {
  */
 router.post(
   "/add",
-  upload.array("jewelleryImages", 10), // Accept up to 10 files under field 'jewelleryImages'
+  uploadJewelleryImages,
   async (req, res) => {
     const {
       serviceId,
@@ -92,7 +124,7 @@ router.post(
       taxAmount,
       totalAmount,
       status,
-      jewelleryImages,
+      existingJewelleryImages,
     } = req.body;
 
     if (!serviceName || !fullName || !phone) {
@@ -104,7 +136,7 @@ router.post(
 
     // Multer uploads local files to Cloudinary. Also retain existing HTTPS image URLs.
     const uploadedImageUrls = (req.files || []).map((file) => file.path).filter(Boolean);
-    const suppliedImageUrls = parseBodyImages(jewelleryImages).filter(
+    const suppliedImageUrls = parseBodyImages(existingJewelleryImages).filter(
       (url) => typeof url === "string" && /^https?:\/\//i.test(url)
     );
     const imageUrls = [...new Set([...uploadedImageUrls, ...suppliedImageUrls])];
@@ -258,7 +290,7 @@ router.get("/:id", async (req, res) => {
  */
 router.put(
   "/update/:updateid",
-  upload.array("jewelleryImages", 10),
+  uploadJewelleryImages,
   async (req, res) => {
     const { updateid } = req.params;
     const body = req.body;
