@@ -102,13 +102,12 @@ router.post(
       });
     }
 
-    // Combine uploaded files from Multer and existing image URLs if provided in JSON body
-    let imageUrls = [];
-    if (req.files && req.files.length > 0) {
-      imageUrls = req.files.map((file) => file.path);
-    } else if (jewelleryImages) {
-      imageUrls = parseBodyImages(jewelleryImages);
-    }
+    // Multer uploads local files to Cloudinary. Also retain existing HTTPS image URLs.
+    const uploadedImageUrls = (req.files || []).map((file) => file.path).filter(Boolean);
+    const suppliedImageUrls = parseBodyImages(jewelleryImages).filter(
+      (url) => typeof url === "string" && /^https?:\/\//i.test(url)
+    );
+    const imageUrls = [...new Set([...uploadedImageUrls, ...suppliedImageUrls])];
 
     try {
       const numericServiceFee =
