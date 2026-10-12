@@ -82,11 +82,8 @@ router.post(
       customerType,
       fullName,
       phone,
-      houseNo,
-      street,
-      area,
-      landmark,
-      city,
+      shopName,
+      mandal,
       district,
       state,
       pincode,
@@ -94,6 +91,7 @@ router.post(
       serviceFee,
       taxAmount,
       totalAmount,
+      status,
       jewelleryImages,
     } = req.body;
 
@@ -140,22 +138,20 @@ router.post(
           customer_type,
           full_name,
           phone,
-          house_no,
-          street,
-          area,
-          landmark,
-          city,
+          shop_name,
+          mandal,
           district,
           state,
           pincode,
           special_instructions,
           service_fee,
           tax_amount,
-          total_amount
+          total_amount,
+          status
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
           $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-          $21, $22, $23, $24
+          $21, $22
         )
         RETURNING *;
       `;
@@ -173,11 +169,8 @@ router.post(
         customerType || "SELF",
         fullName,
         phone,
-        houseNo || null,
-        street || null,
-        area || null,
-        landmark || null,
-        city || null,
+        shopName || null,
+        mandal || null,
         district || null,
         state || null,
         pincode || null,
@@ -185,6 +178,7 @@ router.post(
         numericServiceFee,
         numericTaxAmount,
         numericTotalAmount,
+        status || "pending",
       ];
 
       const result = await pool.query(query, values);
@@ -308,20 +302,18 @@ router.put(
           customer_type = $10,
           full_name = $11,
           phone = $12,
-          house_no = $13,
-          street = $14,
-          area = $15,
-          landmark = $16,
-          city = $17,
-          district = $18,
-          state = $19,
-          pincode = $20,
-          special_instructions = $21,
-          service_fee = $22,
-          tax_amount = $23,
-          total_amount = $24,
+          shop_name = $13,
+          mandal = $14,
+          district = $15,
+          state = $16,
+          pincode = $17,
+          special_instructions = $18,
+          service_fee = $19,
+          tax_amount = $20,
+          total_amount = $21,
+          status = $22,
           updated_at = NOW()
-        WHERE id = $25
+        WHERE id = $23
         RETURNING *;
       `;
 
@@ -338,11 +330,8 @@ router.put(
         body.customerType !== undefined ? body.customerType : curr.customer_type,
         body.fullName !== undefined ? body.fullName : curr.full_name,
         body.phone !== undefined ? body.phone : curr.phone,
-        body.houseNo !== undefined ? body.houseNo : curr.house_no,
-        body.street !== undefined ? body.street : curr.street,
-        body.area !== undefined ? body.area : curr.area,
-        body.landmark !== undefined ? body.landmark : curr.landmark,
-        body.city !== undefined ? body.city : curr.city,
+        body.shopName !== undefined ? body.shopName : curr.shop_name,
+        body.mandal !== undefined ? body.mandal : curr.mandal,
         body.district !== undefined ? body.district : curr.district,
         body.state !== undefined ? body.state : curr.state,
         body.pincode !== undefined ? body.pincode : curr.pincode,
@@ -350,6 +339,7 @@ router.put(
         body.serviceFee !== undefined ? parseFloat(body.serviceFee) : curr.service_fee,
         body.taxAmount !== undefined ? parseFloat(body.taxAmount) : curr.tax_amount,
         body.totalAmount !== undefined ? parseFloat(body.totalAmount) : curr.total_amount,
+        body.status !== undefined ? body.status : curr.status,
         updateid,
       ];
 
