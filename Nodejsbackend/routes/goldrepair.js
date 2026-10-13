@@ -1,40 +1,34 @@
-```javascript
 const express = require("express");
 const multer = require("multer");
 const cloudinary = require("../cloudinary");
 const pool = require("../db");
+const { randomUUID } = require("crypto");
 
 const router = express.Router();
 
 const MAX_IMAGES = 10;
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_FILE_SIZE = 8 * 1024 * 1024;
 
-const ALLOWED_MIME_TYPES = new Set([
+const allowedMimeTypes = [
   "image/jpeg",
   "image/png",
   "image/webp",
   "image/gif",
-]);
+];
 
-// --------------------------------------------------
-// MULTER: KEEP FILES IN MEMORY BEFORE CLOUDINARY UPLOAD
-// --------------------------------------------------
+// ========================================
+// MULTER: KEEP IMAGE FILES IN MEMORY
+// ========================================
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    files: MAX_IMAGES,
     fileSize: MAX_FILE_SIZE,
+    files: MAX_IMAGES,
   },
   fileFilter: (req, file, callback) => {
-    console.log("GOLD REPAIR FILE RECEIVED:", {
-      fieldname: file.fieldname,
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-    });
-
-    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+    if (!allowedMimeTypes.includes(file.mimetype)) {
       return callback(
-        new Error(`Unsupported image format: ${file.mimetype}`)
+        new Error("Only JPG, PNG, WEBP and GIF images are allowed.")
       );
     }
 
@@ -42,38 +36,25 @@ const upload = multer({
   },
 });
 
-const uploadJewelleryImages = (req, res, next) => {
+function uploadJewelleryImages(req, res, next) {
   upload.array("jewelleryImages", MAX_IMAGES)(req, res, (error) => {
     if (error) {
-      console.error("MULTER UPLOAD ERROR:", error);
-
       return res.status(400).json({
         success: false,
-        error: error.message || "Image upload failed",
+        error: error.message,
       });
     }
 
     next();
   });
-};
+}
 
-// --------------------------------------------------
-// CLOUDINARY UPLOAD
-// --------------------------------------------------
-const uploadToCloudinary = (file) =>
-  new Promise((resolve, reject) => {
-    if (!file || !Buffer.isBuffer(file.buffer) || file.buffer.length === 0) {
-      return reject(new Error("Uploaded image buffer is empty or invalid"));
-    }
-
-    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      return reject(new Error(`Unsupported image format: ${file.mimetype}`));
-    }
-
-    const publicId =
-      `gold-repair-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 10)}`;
+// ========================================
+// CLOUDINARY IMAGE UPLOAD
+// ========================================
+function uploadToCloudinary(file) {
+  return new Promise((resolve, reject) => {
+    const publicId = `gold-repair-${randomUUID()}`;
 
     const stream = cloudinary.uploader.upload_stream(
       {
@@ -86,8 +67,7 @@ const uploadToCloudinary = (file) =>
           console.error("CLOUDINARY UPLOAD ERROR:", {
             message: error.message,
             http_code: error.http_code,
-            name: error.name,
-            originalname: file.originalname,
+            filename: file.originalname,
             mimetype: file.mimetype,
             size: file.size,
           });
@@ -95,18 +75,9 @@ const uploadToCloudinary = (file) =>
           return reject(error);
         }
 
-        if (!result || !result.secure_url || !result.public_id) {
-          return reject(
-            new Error("Cloudinary did not return a valid image URL")
-          );
+        if (!result?.secure_url || !result?.public_id) {
+          return reject(new Error("Cloudinary returned no image URL."));
         }
-
-        console.log("CLOUDINARY UPLOAD SUCCESS:", {
-          publicId: result.public_id,
-          url: result.secure_url,
-          format: result.format,
-          bytes: result.bytes,
-        });
 
         resolve({
           url: result.secure_url,
@@ -118,97 +89,9 @@ const uploadToCloudinary = (file) =>
     stream.on("error", reject);
     stream.end(file.buffer);
   });
+}
 
-// --------------------------------------------------
-// IMAGE URL HELPERS
-// --------------------------------------------------
-const getPublicId = (imageUrl) => {
-  try {
-    const url = new URL(imageUrl);
-
-    if (
-      url.protocol !== "https:" ||
-      !url.hostname.endsWith("cloudinary.com")
-    ) {
-      return null;
-    }
-
-    const marker = "/upload/";
-    const index = url.pathname.indexOf(marker);
-
-    if (index === -1) return null;
-
-    return url.pathname
-      .slice(index + marker.length)
-      .replace(/^v\d+\//, "")
-      .replace(/\.[^/.]+$/, "");
-  } catch {
-    return null;
-  }
-};
-
-const deleteCloudinaryImages = async (images = []) => {
-  for (const image of images) {
-    try {
-      const publicId =
-        typeof image === "string" ? getPublicId(image) : image.publicId;
-
-      if (!publicId) continue;
-
-      const result = await cloudinary.uploader.destroy(publicId, {
-        resource_type: "image",
-      });
-
-      console.log("CLOUDINARY DELETE:", publicId, result.result);
-    } catch (error) {
-      console.error("CLOUDINARY DELETE ERROR:", error.message);
-    }
-  }
-};
-
-const parseImageInput = (input) => {
-  if (input === undefined || input === null || input === "") return [];
-
-  if (Array.isArray(input)) return input;
-
-  if (typeof input !== "string") {
-    throw new Error("Image input must be a URL or an array of URLs");
-  }
-
-  try {
-    const parsed = JSON.parse(input);
-
-    if (Array.isArray(parsed)) return parsed;
-    if (typeof parsed === "string") return [parsed];
-  } catch {
-    // A single URL may be supplied as plain text.
-  }
-
-  return [input];
-};
-
-const normalizeImageUrls = (input) =>
-  parseImageInput(input).map((item) => {
-    if (typeof item !== "string") {
-      throw new Error("Each image must be an HTTP or HTTPS URL");
-    }
-
-    let url;
-
-    try {
-      url = new URL(item);
-    } catch {
-      throw new Error("Invalid image URL. Upload image files using form-data.");
-    }
-
-    if (!["http:", "https:"].includes(url.protocol)) {
-      throw new Error("Image URL must use HTTP or HTTPS");
-    }
-
-    return item;
-  });
-
-const processImages = async (files = [], body = {}) => {
+async function uploadAllImages(files = []) {
   const uploaded = [];
 
   try {
@@ -216,45 +99,133 @@ const processImages = async (files = [], body = {}) => {
       uploaded.push(await uploadToCloudinary(file));
     }
 
-    // Do not put the same multipart file field into a text URL field.
-    const extraInput =
-      body.existingJewelleryImages !== undefined
-        ? body.existingJewelleryImages
-        : body.jewelleryImages;
-
-    const extraUrls = normalizeImageUrls(extraInput);
-    const uploadedUrls = uploaded.map((image) => image.url);
-    const urls = [...new Set([...uploadedUrls, ...extraUrls])];
-
-    if (urls.length > MAX_IMAGES) {
-      throw new Error(`A maximum of ${MAX_IMAGES} images is allowed`);
-    }
-
-    return { urls, uploaded };
+    return uploaded;
   } catch (error) {
-    await deleteCloudinaryImages(uploaded);
+    // Clean up images uploaded before a later image failed.
+    await Promise.allSettled(
+      uploaded.map((image) =>
+        cloudinary.uploader.destroy(image.publicId)
+      )
+    );
+
     throw error;
   }
-};
+}
 
-const parseAmount = (value, fallback = 0) => {
+// ========================================
+// IMAGE HELPERS
+// ========================================
+function parseImageInput(input) {
+  if (!input) return [];
+
+  if (Array.isArray(input)) return input;
+
+  if (typeof input !== "string") return [];
+
+  try {
+    const parsed = JSON.parse(input);
+    return Array.isArray(parsed) ? parsed : [input];
+  } catch {
+    return [input];
+  }
+}
+
+function validImageUrls(input) {
+  return [
+    ...new Set(
+      parseImageInput(input).filter(
+        (url) =>
+          typeof url === "string" &&
+          /^https:\/\/res\.cloudinary\.com\//i.test(url)
+      )
+    ),
+  ];
+}
+
+function getCloudinaryPublicId(url) {
+  try {
+    const parsed = new URL(url);
+
+    if (!parsed.hostname.endsWith("cloudinary.com")) {
+      return null;
+    }
+
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    const uploadIndex = parts.indexOf("upload");
+
+    if (uploadIndex === -1) return null;
+
+    // Remove "upload", optional transformations and version number.
+    let imageParts = parts.slice(uploadIndex + 1);
+
+    if (imageParts[0]?.startsWith("v") && /^v\d+$/.test(imageParts[0])) {
+      imageParts = imageParts.slice(1);
+    } else {
+      const versionIndex = imageParts.findIndex((part) =>
+        /^v\d+$/.test(part)
+      );
+
+      if (versionIndex !== -1) {
+        imageParts = imageParts.slice(versionIndex + 1);
+      }
+    }
+
+    if (!imageParts.length) return null;
+
+    const last = imageParts[imageParts.length - 1];
+    imageParts[imageParts.length - 1] = last.replace(/\.[^.]+$/, "");
+
+    return imageParts.join("/");
+  } catch {
+    return null;
+  }
+}
+
+async function deleteCloudinaryImages(urls = []) {
+  const uniqueUrls = [...new Set(Array.isArray(urls) ? urls : [])];
+
+  for (const url of uniqueUrls) {
+    const publicId = getCloudinaryPublicId(url);
+
+    if (!publicId) continue;
+
+    try {
+      await cloudinary.uploader.destroy(publicId, {
+        resource_type: "image",
+      });
+    } catch (error) {
+      console.error("CLOUDINARY DELETE ERROR:", error.message);
+    }
+  }
+}
+
+function numberOrDefault(value, fallback = 0) {
   if (value === undefined || value === null || value === "") {
     return fallback;
   }
 
   const number = Number(value);
-  return Number.isFinite(number) ? number : NaN;
-};
 
-// --------------------------------------------------
-// POST: CREATE GOLD REPAIR BOOKING
+  if (!Number.isFinite(number)) {
+    throw new Error(`Invalid numeric value: ${value}`);
+  }
+
+  return number;
+}
+
+function getValue(body, key, databaseValue, fallback = null) {
+  return body[key] !== undefined ? body[key] : databaseValue ?? fallback;
+}
+
+// ========================================
+// POST: CREATE BOOKING
 // POST /goldrepair/add
-// --------------------------------------------------
+// ========================================
 router.post("/add", uploadJewelleryImages, async (req, res) => {
-  let uploaded = [];
+  let uploadedImages = [];
 
   try {
-    const body = req.body || {};
+    const body = req.body;
 
     const {
       serviceId,
@@ -269,46 +240,39 @@ router.post("/add", uploadJewelleryImages, async (req, res) => {
       fullName,
       phone,
       shopName,
+      houseNo,
+      street,
+      area,
+      landmark,
       mandal,
       district,
+      city,
       state,
       pincode,
       specialInstructions,
-      serviceFee,
-      taxAmount,
-      totalAmount,
       status,
     } = body;
 
     if (!serviceName || !fullName || !phone) {
       return res.status(400).json({
         success: false,
-        error: "serviceName, fullName, and phone are required",
+        error: "serviceName, fullName and phone are required.",
       });
     }
 
-    if (!process.env.CLOUDINARY_CLOUD_NAME ||
-        !process.env.CLOUDINARY_API_KEY ||
-        !process.env.CLOUDINARY_API_SECRET) {
-      throw new Error("Cloudinary environment variables are missing");
-    }
+    uploadedImages = await uploadAllImages(req.files || []);
 
-    const processed = await processImages(req.files || [], body);
-    uploaded = processed.uploaded;
+    const extraUrls = validImageUrls(body.existingJewelleryImages);
+    const imageUrls = [
+      ...new Set([...uploadedImages.map((image) => image.url), ...extraUrls]),
+    ];
 
-    const fee = parseAmount(serviceFee);
-    const tax = parseAmount(taxAmount);
-    const total = parseAmount(totalAmount);
-
-    if (![fee, tax, total].every(Number.isFinite)) {
-      await deleteCloudinaryImages(uploaded);
-      uploaded = [];
-
-      return res.status(400).json({
-        success: false,
-        error: "Service fee, tax, and total amount must be valid numbers",
-      });
-    }
+    const serviceFee = numberOrDefault(body.serviceFee);
+    const taxAmount = numberOrDefault(body.taxAmount);
+    const totalAmount =
+      body.totalAmount !== undefined && body.totalAmount !== ""
+        ? numberOrDefault(body.totalAmount)
+        : serviceFee + taxAmount;
 
     const query = `
       INSERT INTO gold_repairs (
@@ -325,8 +289,13 @@ router.post("/add", uploadJewelleryImages, async (req, res) => {
         full_name,
         phone,
         shop_name,
+        house_no,
+        street,
+        area,
+        landmark,
         mandal,
         district,
+        city,
         state,
         pincode,
         special_instructions,
@@ -336,8 +305,10 @@ router.post("/add", uploadJewelleryImages, async (req, res) => {
         status
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-        $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+        $1, $2, $3, $4, $5, $6, $7, $8, $9,
+        $10, $11, $12, $13, $14, $15, $16, $17,
+        $18, $19, $20, $21, $22, $23, $24, $25,
+        $26, $27
       )
       RETURNING *;
     `;
@@ -347,7 +318,7 @@ router.post("/add", uploadJewelleryImages, async (req, res) => {
       serviceName,
       jewelleryType || null,
       issueDescription || null,
-      processed.urls,
+      imageUrls,
       bookingDate || null,
       startTime || null,
       endTime || null,
@@ -356,21 +327,23 @@ router.post("/add", uploadJewelleryImages, async (req, res) => {
       fullName,
       phone,
       shopName || null,
+      houseNo || null,
+      street || null,
+      area || null,
+      landmark || null,
       mandal || null,
       district || null,
+      city || null,
       state || null,
       pincode || null,
       specialInstructions || null,
-      fee,
-      tax,
-      total,
+      serviceFee,
+      taxAmount,
+      totalAmount,
       status || "pending",
     ];
 
     const result = await pool.query(query, values);
-
-    // The database now contains the uploaded URLs.
-    uploaded = [];
 
     return res.status(201).json({
       success: true,
@@ -378,30 +351,27 @@ router.post("/add", uploadJewelleryImages, async (req, res) => {
       data: result.rows[0],
     });
   } catch (error) {
-    console.error("GOLD REPAIR ADD ERROR:", {
-      message: error.message,
-      code: error.code || null,
-      detail: error.detail || null,
-      http_code: error.http_code || null,
-    });
+    // If the database insert fails, remove the newly uploaded images.
+    await deleteCloudinaryImages(
+      uploadedImages.map((image) => image.url)
+    );
 
-    await deleteCloudinaryImages(uploaded);
+    console.error("GOLD REPAIR CREATE ERROR:", error);
 
     return res.status(500).json({
       success: false,
-      error: error.message || "Failed to create gold repair booking",
+      error: "Failed to create gold repair booking.",
+      detail: error.message,
       databaseCode: error.code || null,
-      detail: error.detail || null,
-      cloudinaryCode: error.http_code || null,
     });
   }
 });
 
-// --------------------------------------------------
+// ========================================
 // GET: ALL BOOKINGS
-// GET /goldrepair/repairall
-// --------------------------------------------------
-router.get("/repairall", async (req, res) => {
+// GET /goldrepair/all
+// ========================================
+router.get(["/all", "/repairall"], async (req, res) => {
   try {
     const result = await pool.query(
       "SELECT * FROM gold_repairs ORDER BY id DESC"
@@ -409,33 +379,43 @@ router.get("/repairall", async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      count: result.rows.length,
       data: result.rows,
     });
   } catch (error) {
-    console.error("GOLD REPAIR GET ALL ERROR:", error.message);
+    console.error("GOLD REPAIR LIST ERROR:", error.message);
 
     return res.status(500).json({
       success: false,
-      error: error.message,
+      error: "Failed to fetch gold repair bookings.",
     });
   }
 });
 
-// --------------------------------------------------
-// GET: SINGLE BOOKING
+// ========================================
+// GET: ONE BOOKING
 // GET /goldrepair/:id
-// --------------------------------------------------
+// ========================================
 router.get("/:id", async (req, res) => {
   try {
+    const { id } = req.params;
+
+    if (!/^\d+$/.test(id)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid booking ID.",
+      });
+    }
+
     const result = await pool.query(
       "SELECT * FROM gold_repairs WHERE id = $1",
-      [req.params.id]
+      [id]
     );
 
-    if (!result.rows.length) {
+    if (!result.rowCount) {
       return res.status(404).json({
         success: false,
-        error: "Gold repair booking not found",
+        error: "Gold repair booking not found.",
       });
     }
 
@@ -448,89 +428,73 @@ router.get("/:id", async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      error: error.message,
+      error: "Failed to fetch gold repair booking.",
     });
   }
 });
 
-// --------------------------------------------------
+// ========================================
 // PUT: UPDATE BOOKING
 // PUT /goldrepair/update/:updateid
-// --------------------------------------------------
+// ========================================
 router.put(
   "/update/:updateid",
   uploadJewelleryImages,
   async (req, res) => {
-    let uploaded = [];
+    let newlyUploadedImages = [];
 
     try {
       const { updateid } = req.params;
-      const body = req.body || {};
 
-      const existingResult = await pool.query(
+      if (!/^\d+$/.test(updateid)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid booking ID.",
+        });
+      }
+
+      const check = await pool.query(
         "SELECT * FROM gold_repairs WHERE id = $1",
         [updateid]
       );
 
-      if (!existingResult.rows.length) {
+      if (!check.rowCount) {
         return res.status(404).json({
           success: false,
-          error: "Gold repair booking not found",
+          error: "Gold repair booking not found.",
         });
       }
 
-      const current = existingResult.rows[0];
+      const current = check.rows[0];
+      const body = req.body;
+
+      // Upload new images first; keep existing images if no new files are sent.
+      newlyUploadedImages = await uploadAllImages(req.files || []);
+
       let imageUrls = current.jewellery_images || [];
 
-      if ((req.files || []).length > 0) {
-        const processed = await processImages(req.files, body);
-        uploaded = processed.uploaded;
-        imageUrls = processed.urls;
-      } else if (
-        body.jewelleryImages !== undefined ||
-        body.existingJewelleryImages !== undefined
-      ) {
-        imageUrls = normalizeImageUrls(
-          body.existingJewelleryImages !== undefined
-            ? body.existingJewelleryImages
-            : body.jewelleryImages
-        );
+      if (newlyUploadedImages.length) {
+        imageUrls = newlyUploadedImages.map((image) => image.url);
+      } else if (body.existingJewelleryImages !== undefined) {
+        imageUrls = validImageUrls(body.existingJewelleryImages);
+      } else if (body.jewelleryImages !== undefined) {
+        imageUrls = validImageUrls(body.jewelleryImages);
       }
 
-      if (imageUrls.length > MAX_IMAGES) {
-        await deleteCloudinaryImages(uploaded);
-        uploaded = [];
+      const serviceFee =
+        body.serviceFee !== undefined
+          ? numberOrDefault(body.serviceFee)
+          : Number(current.service_fee || 0);
 
-        return res.status(400).json({
-          success: false,
-          error: `A maximum of ${MAX_IMAGES} images is allowed`,
-        });
-      }
+      const taxAmount =
+        body.taxAmount !== undefined
+          ? numberOrDefault(body.taxAmount)
+          : Number(current.tax_amount || 0);
 
-      const fee = body.serviceFee !== undefined
-        ? parseAmount(body.serviceFee)
-        : Number(current.service_fee || 0);
-
-      const tax = body.taxAmount !== undefined
-        ? parseAmount(body.taxAmount)
-        : Number(current.tax_amount || 0);
-
-      const total = body.totalAmount !== undefined
-        ? parseAmount(body.totalAmount)
-        : Number(current.total_amount || 0);
-
-      if (![fee, tax, total].every(Number.isFinite)) {
-        await deleteCloudinaryImages(uploaded);
-        uploaded = [];
-
-        return res.status(400).json({
-          success: false,
-          error: "Service fee, tax, and total amount must be valid numbers",
-        });
-      }
-
-      const value = (key, column) =>
-        body[key] !== undefined ? body[key] : current[column];
+      const totalAmount =
+        body.totalAmount !== undefined
+          ? numberOrDefault(body.totalAmount)
+          : serviceFee + taxAmount;
 
       const query = `
         UPDATE gold_repairs SET
@@ -547,53 +511,72 @@ router.put(
           full_name = $11,
           phone = $12,
           shop_name = $13,
-          mandal = $14,
-          district = $15,
-          state = $16,
-          pincode = $17,
-          special_instructions = $18,
-          service_fee = $19,
-          tax_amount = $20,
-          total_amount = $21,
-          status = $22,
+          house_no = $14,
+          street = $15,
+          area = $16,
+          landmark = $17,
+          mandal = $18,
+          district = $19,
+          city = $20,
+          state = $21,
+          pincode = $22,
+          special_instructions = $23,
+          service_fee = $24,
+          tax_amount = $25,
+          total_amount = $26,
+          status = $27,
           updated_at = NOW()
-        WHERE id = $23
+        WHERE id = $28
         RETURNING *;
       `;
 
       const values = [
-        value("serviceId", "service_id"),
-        value("serviceName", "service_name"),
-        value("jewelleryType", "jewellery_type"),
-        value("issueDescription", "issue_description"),
+        getValue(body, "serviceId", current.service_id),
+        getValue(body, "serviceName", current.service_name),
+        getValue(body, "jewelleryType", current.jewellery_type),
+        getValue(body, "issueDescription", current.issue_description),
         imageUrls,
-        value("bookingDate", "booking_date"),
-        value("startTime", "start_time"),
-        value("endTime", "end_time"),
-        value("serviceType", "service_type"),
-        value("customerType", "customer_type"),
-        value("fullName", "full_name"),
-        value("phone", "phone"),
-        value("shopName", "shop_name"),
-        value("mandal", "mandal"),
-        value("district", "district"),
-        value("state", "state"),
-        value("pincode", "pincode"),
-        value("specialInstructions", "special_instructions"),
-        fee,
-        tax,
-        total,
-        value("status", "status"),
+        getValue(body, "bookingDate", current.booking_date),
+        getValue(body, "startTime", current.start_time),
+        getValue(body, "endTime", current.end_time),
+        getValue(body, "serviceType", current.service_type),
+        getValue(body, "customerType", current.customer_type),
+        getValue(body, "fullName", current.full_name),
+        getValue(body, "phone", current.phone),
+        getValue(body, "shopName", current.shop_name),
+        getValue(body, "houseNo", current.house_no),
+        getValue(body, "street", current.street),
+        getValue(body, "area", current.area),
+        getValue(body, "landmark", current.landmark),
+        getValue(body, "mandal", current.mandal),
+        getValue(body, "district", current.district),
+        getValue(body, "city", current.city),
+        getValue(body, "state", current.state),
+        getValue(body, "pincode", current.pincode),
+        getValue(body, "specialInstructions", current.special_instructions),
+        serviceFee,
+        taxAmount,
+        totalAmount,
+        getValue(body, "status", current.status),
         updateid,
       ];
 
       const result = await pool.query(query, values);
 
-      if (uploaded.length > 0) {
+      // Delete replaced images only after the database update succeeds.
+      if (newlyUploadedImages.length) {
         await deleteCloudinaryImages(current.jewellery_images || []);
-      }
+      } else if (
+        body.existingJewelleryImages !== undefined ||
+        body.jewelleryImages !== undefined
+      ) {
+        const retained = new Set(imageUrls);
+        const removed = (current.jewellery_images || []).filter(
+          (url) => !retained.has(url)
+        );
 
-      uploaded = [];
+        await deleteCloudinaryImages(removed);
+      }
 
       return res.status(200).json({
         success: true,
@@ -601,58 +584,78 @@ router.put(
         data: result.rows[0],
       });
     } catch (error) {
-      console.error("GOLD REPAIR UPDATE ERROR:", error.message);
-      await deleteCloudinaryImages(uploaded);
+      await deleteCloudinaryImages(
+        newlyUploadedImages.map((image) => image.url)
+      );
+
+      console.error("GOLD REPAIR UPDATE ERROR:", error);
 
       return res.status(500).json({
         success: false,
-        error: error.message || "Failed to update booking",
+        error: "Failed to update gold repair booking.",
+        detail: error.message,
         databaseCode: error.code || null,
-        detail: error.detail || null,
       });
     }
   }
 );
 
-// --------------------------------------------------
+// ========================================
 // DELETE: BOOKING
 // DELETE /goldrepair/:id
-// --------------------------------------------------
+// ========================================
 router.delete("/:id", async (req, res) => {
   try {
-    const existing = await pool.query(
-      "SELECT jewellery_images FROM gold_repairs WHERE id = $1",
-      [req.params.id]
-    );
+    const { id } = req.params;
 
-    if (!existing.rows.length) {
-      return res.status(404).json({
+    if (!/^\d+$/.test(id)) {
+      return res.status(400).json({
         success: false,
-        error: "Gold repair booking not found",
+        error: "Invalid booking ID.",
       });
     }
 
-    await pool.query(
-      "DELETE FROM gold_repairs WHERE id = $1",
-      [req.params.id]
+    const result = await pool.query(
+      "DELETE FROM gold_repairs WHERE id = $1 RETURNING *",
+      [id]
     );
 
-    await deleteCloudinaryImages(existing.rows[0].jewellery_images || []);
+    if (!result.rowCount) {
+      return res.status(404).json({
+        success: false,
+        error: "Gold repair booking not found.",
+      });
+    }
+
+    // The database record is deleted first. Image cleanup errors are logged.
+    await deleteCloudinaryImages(result.rows[0].jewellery_images || []);
 
     return res.status(200).json({
       success: true,
-      message: "Gold repair booking deleted successfully",
+      message: "Gold repair booking deleted successfully.",
     });
   } catch (error) {
     console.error("GOLD REPAIR DELETE ERROR:", error.message);
 
     return res.status(500).json({
       success: false,
-      error: error.message,
-      databaseCode: error.code || null,
+      error: "Failed to delete gold repair booking.",
     });
   }
 });
 
+// ========================================
+// MULTER / UPLOAD ERROR HANDLER
+// ========================================
+router.use((error, req, res, next) => {
+  console.error("GOLD REPAIR ROUTE ERROR:", error.message);
+
+  if (res.headersSent) return next(error);
+
+  return res.status(400).json({
+    success: false,
+    error: error.message || "Invalid request.",
+  });
+});
+
 module.exports = router;
-```
