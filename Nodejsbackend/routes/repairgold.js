@@ -123,10 +123,14 @@ router.post("/add", upload.array("images", 10), async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("REPAIR GOLD ADD ERROR:", error);
+    console.error("🔥🔥🔥 EXACT DATABASE ERROR:", error.message);
+    console.error("🔥🔥🔥 ERROR DETAILS:", error.detail);
+    
     return res.status(500).json({
       error: "Failed to add repair gold booking",
-      details: error.message,
+      real_reason: error.message,     // This will show exactly why it failed in Postman
+      postgres_detail: error.detail,  // This will show if a column is missing
+      code: error.code
     });
   }
 });
@@ -277,10 +281,11 @@ router.put("/:id", upload.array("images", 10), async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("UPDATE REPAIR GOLD ERROR:", error);
+    console.error("🔥🔥🔥 EXACT UPDATE DATABASE ERROR:", error.message);
     return res.status(500).json({
       error: "Failed to update repair gold booking",
-      details: error.message,
+      real_reason: error.message,
+      postgres_detail: error.detail,
     });
   }
 });
