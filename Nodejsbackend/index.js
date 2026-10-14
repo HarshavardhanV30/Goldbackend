@@ -17,7 +17,8 @@ const GoldPrice=require("./routes/Goldprices");
 const SellPrice=require("./routes/SellGoldPrice");
 const categoryname=require("./routes/category");
 const goldrepair=require("./routes/goldrepair");
-const repairgold=require("./routes/repairgold");
+
+const vendor_address=require("./routes/vendoraddress");
 
 app.use(cors());
 app.use(express.json());
@@ -35,7 +36,8 @@ app.use("/Goldprices",GoldPrice);
 app.use("/sellprice",SellPrice);
 app.use("/category",categoryname);
 app.use("/goldrepair",goldrepair);
-app.use("/repairgold",repairgold);
+
+app.use("/vendoraddress",vendor_address);
 
 const PORT = process.env.PORT || 5432;
 app.listen(PORT, () => {
