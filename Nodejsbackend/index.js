@@ -17,6 +17,7 @@ const GoldPrice=require("./routes/Goldprices");
 const SellPrice=require("./routes/SellGoldPrice");
 const categoryname=require("./routes/category");
 const goldrepair=require("./routes/goldrepair");
+const gold_services=require("./routes/goldservice");
 
 const vendor_address=require("./routes/vendoraddress");
 
@@ -36,6 +37,7 @@ app.use("/Goldprices",GoldPrice);
 app.use("/sellprice",SellPrice);
 app.use("/category",categoryname);
 app.use("/goldrepair",goldrepair);
+app.use("/goldservice",gold_services);
 
 app.use("/vendoraddress",vendor_address);
 
